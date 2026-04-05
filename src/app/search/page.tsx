@@ -320,6 +320,7 @@ function SearchPageInner() {
   const [fromLocation, setFromLocation] = useState<SelectedLocation | null>(null)
   const [toLocation, setToLocation] = useState<SelectedLocation | null>(null)
   const [isSearching, setIsSearching] = useState(false)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'duplicate'>('idle')
   const [mode, setMode] = useState<'leave_now' | 'leave_at' | 'arrive_by'>('leave_at')
   const [selectedDate, setSelectedDate] = useState(0)
   const [hour, setHour] = useState(today.getHours() % 12 || 12)
@@ -335,6 +336,9 @@ function SearchPageInner() {
       setToQuery(toName)
     }
   }, [params])
+
+  // Reset save state when destination changes
+  useEffect(() => { setSaveState('idle') }, [toLocation])
 
   const dates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
@@ -357,6 +361,20 @@ function SearchPageInner() {
     if (loc.kind === 'stop') return { id: loc.stopId, name: loc.name }
     // For address results pass lat,lon as the ID — real API can resolve these
     return { id: `${loc.lat},${loc.lon}`, name: loc.name }
+  }
+
+  async function handleSaveDestination() {
+    if (!toLocation) return
+    setSaveState('saving')
+    const stop_id = toLocation.kind === 'stop' ? toLocation.stopId : `${toLocation.lat},${toLocation.lon}`
+    const res = await fetch('/api/saved', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: toLocation.name, stop_name: toLocation.name, stop_id, lat: toLocation.lat, lng: toLocation.lon }),
+    })
+    if (res.status === 409) { setSaveState('duplicate'); return }
+    if (!res.ok) { setSaveState('idle'); return }
+    setSaveState('saved')
   }
 
   function handleFindJourneys() {
@@ -413,6 +431,25 @@ function SearchPageInner() {
               autoFocus={!params.get('to')}
             />
           </div>
+
+          {/* Save destination chip — appears after a TO is selected */}
+          {toLocation && !isSearching && (
+            <div className="flex justify-end pr-1">
+              <button
+                onClick={handleSaveDestination}
+                disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'duplicate'}
+                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all
+                  ${saveState === 'saved' ? 'bg-primary/20 text-primary' : saveState === 'duplicate' ? 'bg-surface-container text-on-surface-variant' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
+              >
+                <Icon
+                  name={saveState === 'saved' ? 'bookmark' : 'bookmark_add'}
+                  filled={saveState === 'saved'}
+                  size={14}
+                />
+                {saveState === 'saved' ? 'Saved!' : saveState === 'duplicate' ? 'Already saved' : saveState === 'saving' ? 'Saving…' : 'Save destination'}
+              </button>
+            </div>
+          )}
         </section>
 
         {/* Mode + Date + Time — hidden while a location field is focused */}
