@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
@@ -95,6 +95,74 @@ type SelectedLocation =
 interface SearchResults {
   stops: TranslinkStop[]
   places: PhotonResult[]
+}
+
+const ITEM_H = 44
+
+function ScrollPicker({
+  items,
+  selectedIndex,
+  onChange,
+}: {
+  items: string[]
+  selectedIndex: number
+  onChange: (index: number) => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const settling = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const programmatic = useRef(false)
+
+  // Set initial scroll position once on mount — no deps to avoid feedback loop
+  useLayoutEffect(() => {
+    if (ref.current) ref.current.scrollTop = selectedIndex * ITEM_H
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function onScroll() {
+    if (programmatic.current) return
+    if (settling.current) clearTimeout(settling.current)
+    settling.current = setTimeout(() => {
+      if (!ref.current) return
+      const idx = Math.max(0, Math.min(items.length - 1, Math.round(ref.current.scrollTop / ITEM_H)))
+      onChange(idx)
+    }, 100)
+  }
+
+  function scrollTo(i: number) {
+    if (!ref.current) return
+    programmatic.current = true
+    ref.current.scrollTo({ top: i * ITEM_H, behavior: 'smooth' })
+    onChange(i)
+    setTimeout(() => { programmatic.current = false }, 300)
+  }
+
+  return (
+    <div className="relative w-16 h-[132px] overflow-hidden select-none">
+      <div className="absolute inset-x-0 top-[44px] h-[44px] border-y border-outline-variant/30 pointer-events-none z-10" />
+      <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-surface-container-lowest to-transparent pointer-events-none z-10" />
+      <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-surface-container-lowest to-transparent pointer-events-none z-10" />
+      <div
+        ref={ref}
+        onScroll={onScroll}
+        className="h-full overflow-y-scroll [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ scrollSnapType: 'y mandatory' }}
+      >
+        <div style={{ height: ITEM_H }} />
+        {items.map((item, i) => (
+          <div
+            key={i}
+            style={{ scrollSnapAlign: 'center', height: ITEM_H }}
+            className={`flex items-center justify-center text-2xl font-headline font-bold cursor-pointer transition-colors
+              ${i === selectedIndex ? 'text-primary' : 'text-on-surface-variant'}`}
+            onPointerDown={() => scrollTo(i)}
+          >
+            {item}
+          </div>
+        ))}
+        <div style={{ height: ITEM_H }} />
+      </div>
+    </div>
+  )
 }
 
 function LocationDropdown({
@@ -332,10 +400,10 @@ function SearchPageInner() {
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'duplicate'>('idle')
   const [mode, setMode] = useState<'leave_now' | 'leave_at'>('leave_at')
   const [selectedDate, setSelectedDate] = useState(0)
-  const [hour, setHour] = useState(today.getHours() % 12 || 12)
-  const [minute, setMinute] = useState(Math.floor(today.getMinutes() / 5) * 5)
-  const [isPm, setIsPm] = useState(today.getHours() >= 12)
+  const [timeHour, setTimeHour] = useState(today.getHours())
+  const [timeMinute, setTimeMinute] = useState(Math.floor(today.getMinutes() / 5) * 5)
   const [recents, setRecents] = useState<RecentItem[]>([])
+  const [showTimePicker, setShowTimePicker] = useState(false)
   const modeSectionRef = useRef<HTMLElement>(null)
 
   // Get device location for real FROM coordinates
@@ -392,8 +460,7 @@ function SearchPageInner() {
   }
 
   function getTimeString() {
-    const h24 = isPm ? (hour === 12 ? 12 : hour + 12) : hour === 12 ? 0 : hour
-    return `${String(h24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    return `${String(timeHour).padStart(2, '0')}:${String(timeMinute).padStart(2, '0')}`
   }
 
   function locationToParams(loc: SelectedLocation | null, fallbackName: string) {
@@ -415,6 +482,13 @@ function SearchPageInner() {
     if (res.status === 409) { setSaveState('duplicate'); return }
     if (!res.ok) { setSaveState('idle'); return }
     setSaveState('saved')
+  }
+
+  function getTimeChipLabel() {
+    if (mode === 'leave_now') return 'Leave now'
+    const d = dates[selectedDate]
+    const dayLabel = selectedDate === 0 ? 'Today' : DAY_NAMES[d.getDay()]
+    return `${dayLabel} · ${getTimeString()}`
   }
 
   function handleSwap() {
@@ -526,81 +600,73 @@ function SearchPageInner() {
           )}
         </section>
 
-        {/* Mode + Date + Time — hidden while a location field is focused */}
-        {/* Mode toggle */}
-        <section ref={modeSectionRef} className={isSearching ? 'hidden' : ''}>
-          <div className="flex bg-surface-container-low p-1 rounded-full">
-            {(['leave_now', 'leave_at'] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`flex-1 py-2.5 px-2 rounded-full text-sm font-semibold transition-all
-                  ${mode === m ? 'bg-primary text-on-primary shadow-lg shadow-primary/20 font-bold' : 'text-on-surface-variant hover:text-primary'}`}
-              >
-                {m === 'leave_now' ? 'Leave now' : 'Leave at'}
-              </button>
-            ))}
-          </div>
-        </section>
+        {/* Time chip — collapsed by default, hidden while searching */}
+        {!isSearching && (
+          <section ref={modeSectionRef}>
+            <button
+              onClick={() => setShowTimePicker((v) => !v)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-lowest rounded-full shadow-sm border border-outline-variant/20 text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-all active:scale-95"
+            >
+              <Icon name="schedule" size={16} className="text-primary" />
+              <span>{getTimeChipLabel()}</span>
+              <Icon name={showTimePicker ? 'expand_less' : 'expand_more'} size={16} className="text-outline" />
+            </button>
 
-        {/* Date + Time */}
-        {!isSearching && mode !== 'leave_now' && (
-          <section className="space-y-4">
-            <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-              {dates.map((d, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedDate(i)}
-                  className={`flex-shrink-0 flex flex-col items-center justify-center w-16 h-20 rounded-2xl transition-all
-                    ${selectedDate === i ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high'}`}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-tighter opacity-80">
-                    {i === 0 ? 'Today' : DAY_NAMES[d.getDay()]}
-                  </span>
-                  <span className="text-xl font-headline font-bold">{d.getDate()}</span>
-                </button>
-              ))}
-            </div>
+            {showTimePicker && (
+              <div className="mt-4 space-y-4">
+                {/* Leave now / Leave at */}
+                <div className="flex gap-2">
+                  {(['leave_now', 'leave_at'] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => { setMode(m); if (m === 'leave_now') setShowTimePicker(false) }}
+                      className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all
+                        ${mode === m ? 'bg-primary text-on-primary shadow-md shadow-primary/20' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
+                    >
+                      {m === 'leave_now' ? 'Leave now' : 'Leave at'}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="bg-surface-container-lowest p-6 rounded-3xl flex items-center justify-around shadow-[0_4px_32px_rgba(26,28,28,0.02)]">
-              <div className="flex items-center gap-4">
-                {/* Hours */}
-                <div className="flex flex-col items-center">
-                  <button onClick={() => setHour((h) => h === 12 ? 1 : h + 1)} className="text-outline p-1">
-                    <Icon name="keyboard_arrow_up" size={20} />
-                  </button>
-                  <span className="text-4xl font-headline font-extrabold text-on-surface tracking-tighter w-16 text-center">
-                    {String(hour).padStart(2, '0')}
-                  </span>
-                  <button onClick={() => setHour((h) => h === 1 ? 12 : h - 1)} className="text-outline p-1">
-                    <Icon name="keyboard_arrow_down" size={20} />
-                  </button>
-                </div>
-                <span className="text-4xl font-headline font-extrabold text-outline-variant">:</span>
-                {/* Minutes */}
-                <div className="flex flex-col items-center">
-                  <button onClick={() => setMinute((m) => (m + 5) % 60)} className="text-outline p-1">
-                    <Icon name="keyboard_arrow_up" size={20} />
-                  </button>
-                  <span className="text-4xl font-headline font-extrabold text-on-surface tracking-tighter w-16 text-center">
-                    {String(minute).padStart(2, '0')}
-                  </span>
-                  <button onClick={() => setMinute((m) => (m - 5 + 60) % 60)} className="text-outline p-1">
-                    <Icon name="keyboard_arrow_down" size={20} />
-                  </button>
-                </div>
+                {mode === 'leave_at' && (
+                  <>
+                    {/* Date chips */}
+                    <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                      {dates.map((d, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setSelectedDate(i)}
+                          className={`flex-shrink-0 flex flex-col items-center justify-center w-14 h-16 rounded-2xl transition-all
+                            ${selectedDate === i ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}
+                        >
+                          <span className="text-[9px] font-bold uppercase tracking-tighter opacity-80">
+                            {i === 0 ? 'Today' : DAY_NAMES[d.getDay()]}
+                          </span>
+                          <span className="text-lg font-headline font-bold">{d.getDate()}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Drum roll time picker */}
+                    <div className="bg-surface-container-lowest rounded-2xl shadow-sm px-6 py-2">
+                      <div className="flex items-center justify-center gap-1">
+                        <ScrollPicker
+                          items={Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))}
+                          selectedIndex={timeHour}
+                          onChange={setTimeHour}
+                        />
+                        <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
+                        <ScrollPicker
+                          items={Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))}
+                          selectedIndex={timeMinute / 5}
+                          onChange={(i) => setTimeMinute(i * 5)}
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="flex flex-col gap-2">
-                <button
-                  onClick={() => setIsPm(false)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${!isPm ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
-                >AM</button>
-                <button
-                  onClick={() => setIsPm(true)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${isPm ? 'bg-primary text-on-primary' : 'text-on-surface-variant'}`}
-                >PM</button>
-              </div>
-            </div>
+            )}
           </section>
         )}
 
