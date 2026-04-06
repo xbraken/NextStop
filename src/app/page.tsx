@@ -54,15 +54,17 @@ export default async function HomePage() {
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-10 pb-32">
         {/* Location */}
-        <Suspense fallback={<div className="h-5 w-32 bg-surface-container rounded animate-pulse" />}>
-          <LocationHeader />
-        </Suspense>
+        <div className="animate-fade-in">
+          <Suspense fallback={<div className="h-5 w-32 bg-surface-container rounded animate-pulse" />}>
+            <LocationHeader />
+          </Suspense>
+        </div>
 
         {/* Hero Search */}
-        <section className="space-y-4">
+        <section className="space-y-4 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
           <Link
             href="/search"
-            className="flex items-center gap-4 h-20 px-6 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] hover:shadow-[0_12px_40px_rgba(0,101,101,0.1)] transition-shadow"
+            className="flex items-center gap-4 h-20 px-6 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] hover:shadow-[0_12px_40px_rgba(0,101,101,0.1)] hover:scale-[1.005] transition-all duration-200"
           >
             <Icon name="search" size={24} className="text-primary/50" />
             <span className="text-2xl font-headline font-bold text-outline-variant">
@@ -73,11 +75,12 @@ export default async function HomePage() {
           {/* Quick Chips — only shown if there are saved places */}
           {saved.length > 0 && (
             <div className="flex gap-3 overflow-x-auto hide-scrollbar">
-              {saved.slice(0, 3).map((dest) => (
+              {saved.slice(0, 3).map((dest, i) => (
                 <Link
                   key={dest.id}
                   href={`/search?to=${encodeURIComponent(dest.stop_id)}&toName=${encodeURIComponent(dest.label)}`}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-surface-container-low rounded-full hover:bg-surface-container-high transition-colors active:scale-95 text-sm font-semibold whitespace-nowrap shrink-0"
+                  style={{ animationDelay: `${0.1 + i * 0.05}s` }}
+                  className="animate-fade-in animate-stagger flex items-center gap-2 px-5 py-2.5 bg-surface-container-low rounded-full hover:bg-surface-container-high transition-colors active:scale-95 text-sm font-semibold whitespace-nowrap shrink-0"
                 >
                   <Icon name={iconForDestination(dest)} size={18} className="text-primary" />
                   {dest.label}
@@ -88,7 +91,7 @@ export default async function HomePage() {
         </section>
 
         {/* Saved Destinations Bento */}
-        <section className="space-y-4">
+        <section className="space-y-4 animate-fade-in-up animate-stagger" style={{ animationDelay: '0.12s' }}>
           <div className="flex items-center justify-between">
             <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
               Saved Destinations
@@ -157,7 +160,7 @@ export default async function HomePage() {
         </section>
 
         {/* Status Card */}
-        <section>
+        <section className="animate-fade-in-up animate-stagger" style={{ animationDelay: '0.2s' }}>
           <Suspense
             fallback={
               <div className="h-24 rounded-xl bg-surface-container animate-pulse" />

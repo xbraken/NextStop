@@ -160,7 +160,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
 
       <main className="pt-24 pb-40 px-6 max-w-2xl mx-auto">
         {/* Hero */}
-        <section className="mb-10">
+        <section className="mb-10 animate-fade-in-up">
           <div className="flex items-baseline justify-between mb-1">
             <h2 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface">
               {lastLeg.to.name}
@@ -174,14 +174,22 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
 
         {/* Timeline */}
         <div className="relative">
-          {/* Progress line */}
+          {/* Progress track */}
           <div className="absolute left-[23px] top-6 bottom-6 w-1 bg-primary/10 rounded-full" />
-          <div className="absolute left-[23px] top-6 h-2/3 w-1 bg-primary rounded-full" />
+          {/* Animated fill */}
+          <div className="absolute left-[23px] top-6 w-1 bg-primary rounded-full animate-grow-progress" />
 
           {journey.legs.map((leg, i) => {
             const isLast = i === journey.legs.length - 1
-            if (isLast) return <ArriveRow key={i} leg={leg} />
-            return <LegRow key={i} leg={leg} />
+            return (
+              <div
+                key={i}
+                className="animate-fade-in-up animate-stagger"
+                style={{ animationDelay: `${i * 0.1}s` }}
+              >
+                {isLast ? <ArriveRow leg={leg} /> : <LegRow leg={leg} />}
+              </div>
+            )
           })}
         </div>
       </main>

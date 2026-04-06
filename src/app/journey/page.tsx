@@ -78,7 +78,8 @@ async function JourneyResults({ searchParams }: PageProps) {
           <Link
             key={journey.id}
             href={detailHref}
-            className={`block bg-surface-container-lowest rounded-xl p-6 shadow-[0_8px_32px_rgba(26,28,28,0.04)] transition-all hover:scale-[1.01] active:scale-[0.99]
+            style={{ animationDelay: `${idx * 0.08}s` }}
+            className={`animate-fade-in-up animate-stagger block bg-surface-container-lowest rounded-xl p-6 shadow-[0_8px_32px_rgba(26,28,28,0.04)] transition-all duration-200 hover:scale-[1.01] hover:shadow-[0_12px_40px_rgba(0,101,101,0.10)] active:scale-[0.99]
               ${journey.badge === 'Fastest' ? 'border-l-4 border-primary' : ''}
               ${journey.badge === 'Alternative' ? 'opacity-75' : ''}
             `}
@@ -126,9 +127,11 @@ async function JourneyResults({ searchParams }: PageProps) {
       })}
 
       {journeys.length === 0 && (
-        <div className="text-center py-16 text-on-surface-variant">
-          <Icon name="search_off" size={48} className="mb-4 opacity-40" />
-          <p className="font-headline font-bold">No journeys found</p>
+        <div className="animate-fade-in text-center py-20 text-on-surface-variant">
+          <div className="w-20 h-20 bg-surface-container rounded-full flex items-center justify-center mx-auto mb-5">
+            <Icon name="search_off" size={40} className="opacity-40" />
+          </div>
+          <p className="font-headline font-bold text-lg text-on-surface">No journeys found</p>
           <p className="text-sm mt-1">Try adjusting your time or date</p>
         </div>
       )}
@@ -173,7 +176,19 @@ export default async function JourneyPage(props: PageProps) {
           fallback={
             <div className="space-y-5">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-40 rounded-xl bg-surface-container animate-pulse" />
+                <div key={i} className="rounded-xl bg-surface-container animate-pulse overflow-hidden" style={{ animationDelay: `${(i - 1) * 0.1}s` }}>
+                  <div className="p-6 space-y-4">
+                    <div className="flex justify-between">
+                      <div className="h-4 w-24 bg-surface-container-high rounded-full" />
+                      <div className="h-6 w-16 bg-surface-container-high rounded-full" />
+                    </div>
+                    <div className="h-10 bg-surface-container-high rounded-lg" />
+                    <div className="flex justify-between">
+                      <div className="h-3 w-16 bg-surface-container-high rounded-full" />
+                      <div className="h-5 w-14 bg-surface-container-high rounded-full" />
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           }

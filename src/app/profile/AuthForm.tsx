@@ -36,21 +36,25 @@ export default function AuthForm() {
   }
 
   return (
-    <div className="space-y-6 py-4">
+    <div className="space-y-6 py-4 animate-fade-in-up">
       {/* Mode toggle */}
-      <div className="flex bg-surface-container-low p-1 rounded-full">
+      <div className="flex bg-surface-container-low p-1 rounded-full relative">
         <button
           onClick={() => { setMode('login'); setError('') }}
-          className={`flex-1 py-2.5 rounded-full text-sm font-bold transition-all ${mode === 'login' ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface-variant'}`}
+          className={`flex-1 py-2.5 rounded-full text-sm font-bold transition-all duration-200 relative z-10 ${mode === 'login' ? 'text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
         >
           Sign In
         </button>
         <button
           onClick={() => { setMode('register'); setError('') }}
-          className={`flex-1 py-2.5 rounded-full text-sm font-bold transition-all ${mode === 'register' ? 'bg-primary text-on-primary shadow-md' : 'text-on-surface-variant'}`}
+          className={`flex-1 py-2.5 rounded-full text-sm font-bold transition-all duration-200 relative z-10 ${mode === 'register' ? 'text-on-primary' : 'text-on-surface-variant hover:text-on-surface'}`}
         >
           Create Account
         </button>
+        {/* Sliding pill */}
+        <div
+          className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-primary rounded-full shadow-md transition-all duration-250 ease-in-out ${mode === 'register' ? 'left-[calc(50%+2px)]' : 'left-1'}`}
+        />
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -85,7 +89,8 @@ export default function AuthForm() {
         </div>
 
         {error && (
-          <p className="text-error text-sm font-medium bg-error-container/20 px-4 py-2 rounded-lg">
+          <p className="animate-fade-in text-error text-sm font-medium bg-error-container/20 px-4 py-3 rounded-xl border border-error/20 flex items-center gap-2">
+            <span className="material-symbols-outlined text-[18px]">error</span>
             {error}
           </p>
         )}

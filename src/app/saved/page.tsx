@@ -36,23 +36,26 @@ export default async function SavedPage() {
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-6 pb-32">
         <div className="space-y-3">
           {destinations.length === 0 && (
-            <div className="text-center py-16 text-on-surface-variant">
-              <Icon name="bookmark" size={48} className="mb-4 opacity-30 block mx-auto" />
-              <p className="font-headline font-bold text-lg">No saved destinations</p>
+            <div className="animate-fade-in text-center py-20 text-on-surface-variant">
+              <div className="w-20 h-20 bg-surface-container rounded-full flex items-center justify-center mx-auto mb-5">
+                <Icon name="bookmark" size={40} className="opacity-30" />
+              </div>
+              <p className="font-headline font-bold text-lg text-on-surface">No saved destinations</p>
               <p className="text-sm mt-1">Search for a stop and save it here</p>
               <Link
                 href="/search"
-                className="inline-block mt-6 px-6 py-3 bg-primary text-on-primary rounded-full font-bold text-sm"
+                className="inline-block mt-6 px-6 py-3 bg-primary text-on-primary rounded-full font-bold text-sm active:scale-95 transition-transform"
               >
                 Search stops
               </Link>
             </div>
           )}
 
-          {destinations.map((dest) => (
+          {destinations.map((dest, i) => (
             <div
               key={dest.id}
-              className="flex items-center gap-4 p-5 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)]"
+              style={{ animationDelay: `${i * 0.06}s` }}
+              className="animate-fade-in-up animate-stagger flex items-center gap-4 p-5 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md transition-shadow duration-200"
             >
               <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
                 <Icon name="location_on" filled size={22} className="text-primary" />

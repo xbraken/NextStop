@@ -177,7 +177,7 @@ function LocationDropdown({
   if (!hasStops && !hasPlaces) return null
 
   return (
-    <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.12)] overflow-hidden border border-outline-variant/20">
+    <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.12)] overflow-hidden border border-outline-variant/20 animate-fade-in-down">
       {hasStops && (
         <>
           <div className="px-4 pt-3 pb-1">
@@ -572,138 +572,167 @@ function SearchPageInner() {
             />
           </div>
 
-          {/* Save destination row — appears after a TO is selected */}
-          {toLocation && !isSearching && (
-            <button
-              onClick={handleSaveDestination}
-              disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'duplicate'}
-              className="w-full flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:bg-surface-container-low transition-colors text-left"
-            >
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${saveState === 'saved' ? 'bg-primary/20' : 'bg-primary/10'}`}>
-                <Icon
-                  name={saveState === 'saved' ? 'bookmark' : 'bookmark_add'}
-                  filled={saveState === 'saved'}
-                  size={20}
-                  className="text-primary"
-                />
+          {/* Save destination row — smoothly slides in after a TO is selected */}
+          <div
+            className={`grid transition-all duration-300 ease-in-out ${toLocation && !isSearching ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'}`}
+          >
+            <div className="overflow-hidden">
+              <div className="pt-3">
+                <button
+                  onClick={handleSaveDestination}
+                  disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'duplicate'}
+                  className="w-full flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:bg-surface-container-low transition-colors text-left"
+                >
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors duration-300 ${saveState === 'saved' ? 'bg-primary/20' : 'bg-primary/10'}`}>
+                    <Icon
+                      name={saveState === 'saved' ? 'bookmark' : 'bookmark_add'}
+                      filled={saveState === 'saved'}
+                      size={20}
+                      className="text-primary"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm text-on-surface transition-all duration-200">
+                      {saveState === 'saved' ? 'Destination saved!' : saveState === 'duplicate' ? 'Already saved' : 'Save this destination'}
+                    </p>
+                    <p className="text-xs text-on-surface-variant truncate mt-0.5">{toLocation?.name}</p>
+                  </div>
+                  <div className={`transition-all duration-200 ${saveState === 'idle' ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
+                    <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full shrink-0">Save</span>
+                  </div>
+                </button>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-sm text-on-surface">
-                  {saveState === 'saved' ? 'Destination saved!' : saveState === 'duplicate' ? 'Already saved' : 'Save this destination'}
-                </p>
-                <p className="text-xs text-on-surface-variant truncate mt-0.5">{toLocation.name}</p>
-              </div>
-              {saveState === 'idle' && (
-                <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full shrink-0">Save</span>
-              )}
-            </button>
-          )}
+            </div>
+          </div>
         </section>
 
-        {/* Time chip — collapsed by default, hidden while searching */}
-        {!isSearching && (
-          <section ref={modeSectionRef}>
-            <button
-              onClick={() => setShowTimePicker((v) => !v)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-lowest rounded-full shadow-sm border border-outline-variant/20 text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-all active:scale-95"
-            >
-              <Icon name="schedule" size={16} className="text-primary" />
-              <span>{getTimeChipLabel()}</span>
-              <Icon name={showTimePicker ? 'expand_less' : 'expand_more'} size={16} className="text-outline" />
-            </button>
+        {/* Time chip + Recents — smoothly collapse when the user is typing */}
+        <div
+          className={`grid transition-all duration-300 ease-in-out ${isSearching ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}
+        >
+          <div className="overflow-hidden">
+            <div className="space-y-8">
+              {/* Time chip — collapsed by default */}
+              <section ref={modeSectionRef}>
+                <button
+                  onClick={() => setShowTimePicker((v) => !v)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-surface-container-lowest rounded-full shadow-sm border border-outline-variant/20 text-sm font-semibold text-on-surface hover:bg-surface-container-low transition-all active:scale-95"
+                >
+                  <Icon name="schedule" size={16} className="text-primary" />
+                  <span>{getTimeChipLabel()}</span>
+                  <Icon
+                    name={showTimePicker ? 'expand_less' : 'expand_more'}
+                    size={16}
+                    className="text-outline transition-transform duration-200"
+                    style={{ transform: showTimePicker ? 'rotate(0deg)' : 'rotate(0deg)' }}
+                  />
+                </button>
 
-            {showTimePicker && (
-              <div className="mt-4 space-y-4">
-                {/* Leave now / Leave at */}
-                <div className="flex gap-2">
-                  {(['leave_now', 'leave_at'] as const).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => { setMode(m); if (m === 'leave_now') setShowTimePicker(false) }}
-                      className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all
-                        ${mode === m ? 'bg-primary text-on-primary shadow-md shadow-primary/20' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
-                    >
-                      {m === 'leave_now' ? 'Leave now' : 'Leave at'}
-                    </button>
-                  ))}
-                </div>
+                {/* Time picker panel — smooth expand */}
+                <div
+                  className={`grid transition-all duration-300 ease-in-out ${showTimePicker ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="mt-4 space-y-4">
+                      {/* Leave now / Leave at */}
+                      <div className="flex gap-2">
+                        {(['leave_now', 'leave_at'] as const).map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => { setMode(m); if (m === 'leave_now') setShowTimePicker(false) }}
+                            className={`px-5 py-2.5 rounded-full text-sm font-bold transition-all duration-200
+                              ${mode === m ? 'bg-primary text-on-primary shadow-md shadow-primary/20' : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high'}`}
+                          >
+                            {m === 'leave_now' ? 'Leave now' : 'Leave at'}
+                          </button>
+                        ))}
+                      </div>
 
-                {mode === 'leave_at' && (
-                  <>
-                    {/* Date chips */}
-                    <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-                      {dates.map((d, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setSelectedDate(i)}
-                          className={`flex-shrink-0 flex flex-col items-center justify-center w-14 h-16 rounded-2xl transition-all
-                            ${selectedDate === i ? 'bg-primary text-on-primary shadow-md' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}
-                        >
-                          <span className="text-[9px] font-bold uppercase tracking-tighter opacity-80">
-                            {i === 0 ? 'Today' : DAY_NAMES[d.getDay()]}
-                          </span>
-                          <span className="text-lg font-headline font-bold">{d.getDate()}</span>
-                        </button>
-                      ))}
-                    </div>
+                      {/* Date + time picker — slide in when leave_at */}
+                      <div
+                        className={`grid transition-all duration-300 ease-in-out ${mode === 'leave_at' ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}
+                      >
+                        <div className="overflow-hidden">
+                          <div className="space-y-4">
+                            {/* Date chips */}
+                            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                              {dates.map((d, i) => (
+                                <button
+                                  key={i}
+                                  onClick={() => setSelectedDate(i)}
+                                  className={`flex-shrink-0 flex flex-col items-center justify-center w-14 h-16 rounded-2xl transition-all duration-200
+                                    ${selectedDate === i ? 'bg-primary text-on-primary shadow-md scale-105' : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high border border-outline-variant/20'}`}
+                                >
+                                  <span className="text-[9px] font-bold uppercase tracking-tighter opacity-80">
+                                    {i === 0 ? 'Today' : DAY_NAMES[d.getDay()]}
+                                  </span>
+                                  <span className="text-lg font-headline font-bold">{d.getDate()}</span>
+                                </button>
+                              ))}
+                            </div>
 
-                    {/* Drum roll time picker */}
-                    <div className="bg-surface-container-lowest rounded-2xl shadow-sm px-6 py-2">
-                      <div className="flex items-center justify-center gap-1">
-                        <ScrollPicker
-                          items={Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))}
-                          selectedIndex={timeHour}
-                          onChange={setTimeHour}
-                        />
-                        <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
-                        <ScrollPicker
-                          items={Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))}
-                          selectedIndex={timeMinute / 5}
-                          onChange={(i) => setTimeMinute(i * 5)}
-                        />
+                            {/* Drum roll time picker */}
+                            <div className="bg-surface-container-lowest rounded-2xl shadow-sm px-6 py-2">
+                              <div className="flex items-center justify-center gap-1">
+                                <ScrollPicker
+                                  items={Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))}
+                                  selectedIndex={timeHour}
+                                  onChange={setTimeHour}
+                                />
+                                <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
+                                <ScrollPicker
+                                  items={Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, '0'))}
+                                  selectedIndex={timeMinute / 5}
+                                  onChange={(i) => setTimeMinute(i * 5)}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
-        )}
+                  </div>
+                </div>
+              </section>
 
-        {/* Recents */}
-        {!isSearching && recents.length > 0 && (
-          <section className="space-y-4">
-            <h3 className="font-headline font-bold text-lg">Recents</h3>
-            <div className="grid grid-cols-2 gap-4">
-              {recents.slice(0, 4).map((item, i) => {
-                const isAddress = item.to_id.includes(',')
-                const icon = isAddress ? 'location_on' : 'directions_bus'
-                const isWide = i === 0
-                return (
-                  <button
-                    key={item.to_id}
-                    className={`${isWide ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${isWide ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low transition-all active:scale-[0.99]`}
-                    onClick={() => {
-                      const loc: SelectedLocation = isAddress
-                        ? { kind: 'address', name: item.to_label, lat: parseFloat(item.to_id.split(',')[0]), lon: parseFloat(item.to_id.split(',')[1]) }
-                        : { kind: 'stop', stopId: item.to_id, name: item.to_label, lat: 0, lon: 0 }
-                      setToLocation(loc)
-                      setToQuery(item.to_label)
-                    }}
-                  >
-                    <div className={`${isWide ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
-                      <Icon name={icon} size={isWide ? 20 : 16} />
-                    </div>
-                    <div className="min-w-0">
-                      <span className="font-bold block text-sm text-on-surface truncate">{item.to_label}</span>
-                      <span className="text-[11px] text-on-surface-variant truncate block">from {item.from_label}</span>
-                    </div>
-                  </button>
-                )
-              })}
+              {/* Recents */}
+              {recents.length > 0 && (
+                <section className="space-y-4">
+                  <h3 className="font-headline font-bold text-lg">Recents</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    {recents.slice(0, 4).map((item, i) => {
+                      const isAddress = item.to_id.includes(',')
+                      const icon = isAddress ? 'location_on' : 'directions_bus'
+                      const isWide = i === 0
+                      return (
+                        <button
+                          key={item.to_id}
+                          style={{ animationDelay: `${i * 0.06}s` }}
+                          className={`animate-fade-in-up animate-stagger ${isWide ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${isWide ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low hover:shadow-md transition-all duration-200 active:scale-[0.99]`}
+                          onClick={() => {
+                            const loc: SelectedLocation = isAddress
+                              ? { kind: 'address', name: item.to_label, lat: parseFloat(item.to_id.split(',')[0]), lon: parseFloat(item.to_id.split(',')[1]) }
+                              : { kind: 'stop', stopId: item.to_id, name: item.to_label, lat: 0, lon: 0 }
+                            setToLocation(loc)
+                            setToQuery(item.to_label)
+                          }}
+                        >
+                          <div className={`${isWide ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
+                            <Icon name={icon} size={isWide ? 20 : 16} />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold block text-sm text-on-surface truncate">{item.to_label}</span>
+                            <span className="text-[11px] text-on-surface-variant truncate block">from {item.from_label}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
             </div>
-          </section>
-        )}
+          </div>
+        </div>
       </main>
 
       {/* Floating CTA */}
