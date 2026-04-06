@@ -121,10 +121,10 @@ function LocationDropdown({
             <button
               key={stop.stopId}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
+              onPointerDown={(e) => {
+                e.preventDefault()
                 onSelect({ kind: 'stop', stopId: stop.stopId, name: stop.stopName, lat: stop.lat, lon: stop.lon })
-              }
+              }}
             >
               <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
                 <Icon name="directions_bus" size={15} className="text-primary" />
@@ -150,10 +150,10 @@ function LocationDropdown({
             <button
               key={i}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
+              onPointerDown={(e) => {
+                e.preventDefault()
                 onSelect({ kind: 'address', name: place.displayName, lat: place.lat, lon: place.lon })
-              }
+              }}
             >
               <div className="w-7 h-7 bg-surface-container rounded-lg flex items-center justify-center shrink-0">
                 <Icon name="location_on" size={15} className="text-outline" />
@@ -300,14 +300,23 @@ function LocationField({
           onSelect={(loc) => {
             onChange(loc.name)
             setFocused(false)
+            onFocusChange?.(false)
             setResults({ stops: [], places: [] })
             abortRef.current?.abort()
+            ;(document.activeElement as HTMLElement)?.blur()
             onSelect(loc)
           }}
         />
       )}
     </div>
   )
+}
+
+interface RecentItem {
+  to_label: string
+  to_id: string
+  from_label: string
+  from_id: string
 }
 
 function SearchPageInner() {
@@ -321,11 +330,32 @@ function SearchPageInner() {
   const [toLocation, setToLocation] = useState<SelectedLocation | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'duplicate'>('idle')
-  const [mode, setMode] = useState<'leave_now' | 'leave_at' | 'arrive_by'>('leave_at')
+  const [mode, setMode] = useState<'leave_now' | 'leave_at'>('leave_at')
   const [selectedDate, setSelectedDate] = useState(0)
   const [hour, setHour] = useState(today.getHours() % 12 || 12)
   const [minute, setMinute] = useState(Math.floor(today.getMinutes() / 5) * 5)
   const [isPm, setIsPm] = useState(today.getHours() >= 12)
+  const [recents, setRecents] = useState<RecentItem[]>([])
+  const modeSectionRef = useRef<HTMLElement>(null)
+
+  // Get device location for real FROM coordinates
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setFromLocation({ kind: 'address', name: 'Current Location', lat: coords.latitude, lon: coords.longitude })
+      },
+      () => {} // permission denied or unavailable — silently fall back
+    )
+  }, [])
+
+  // Fetch real recents from journey history
+  useEffect(() => {
+    fetch('/api/history')
+      .then((r) => r.json())
+      .then((data) => setRecents(data.history ?? []))
+      .catch(() => {})
+  }, [])
 
   // Pre-fill TO from URL params
   useEffect(() => {
@@ -339,6 +369,16 @@ function SearchPageInner() {
 
   // Reset save state when destination changes
   useEffect(() => { setSaveState('idle') }, [toLocation])
+
+  // Auto-scroll mode section into view after TO is selected
+  useEffect(() => {
+    if (toLocation && !isSearching) {
+      const id = setTimeout(() => {
+        modeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+      return () => clearTimeout(id)
+    }
+  }, [toLocation, isSearching])
 
   const dates = Array.from({ length: 7 }, (_, i) => {
     const d = new Date()
@@ -377,6 +417,13 @@ function SearchPageInner() {
     setSaveState('saved')
   }
 
+  function handleSwap() {
+    setFromQuery(toQuery)
+    setToQuery(fromQuery)
+    setFromLocation(toLocation)
+    setToLocation(fromLocation)
+  }
+
   function handleFindJourneys() {
     if (!toLocation && !toQuery) return
 
@@ -384,6 +431,13 @@ function SearchPageInner() {
     const to = locationToParams(toLocation, toQuery)
 
     if (!to.id || to.id === 'current') return
+
+    // Write to journey history (fire-and-forget)
+    fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from_label: from.name, from_id: from.id, to_label: to.name, to_id: to.id }),
+    }).catch(() => {})
 
     router.push(
       `/journey?from=${encodeURIComponent(from.id)}&fromName=${encodeURIComponent(from.name)}&to=${encodeURIComponent(to.id)}&toName=${encodeURIComponent(to.name)}&date=${getDateString()}&time=${getTimeString()}&mode=${mode}`
@@ -419,6 +473,18 @@ function SearchPageInner() {
               placeholder="Current location or stop"
             />
 
+            {/* Swap button — sits in the gap between FROM and TO */}
+            <div className="flex justify-end relative z-20 -my-1.5 pr-3 pointer-events-none">
+              <button
+                type="button"
+                onClick={handleSwap}
+                className="pointer-events-auto w-8 h-8 rounded-full bg-white border border-outline-variant/40 shadow-md flex items-center justify-center text-primary hover:bg-primary/10 active:scale-95 transition-all"
+                aria-label="Swap origin and destination"
+              >
+                <Icon name="swap_vert" size={18} />
+              </button>
+            </div>
+
             <LocationField
               label="To"
               icon="radio_button_unchecked"
@@ -432,38 +498,46 @@ function SearchPageInner() {
             />
           </div>
 
-          {/* Save destination chip — appears after a TO is selected */}
+          {/* Save destination row — appears after a TO is selected */}
           {toLocation && !isSearching && (
-            <div className="flex justify-end pr-1">
-              <button
-                onClick={handleSaveDestination}
-                disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'duplicate'}
-                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full transition-all
-                  ${saveState === 'saved' ? 'bg-primary/20 text-primary' : saveState === 'duplicate' ? 'bg-surface-container text-on-surface-variant' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
-              >
+            <button
+              onClick={handleSaveDestination}
+              disabled={saveState === 'saving' || saveState === 'saved' || saveState === 'duplicate'}
+              className="w-full flex items-center gap-4 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:bg-surface-container-low transition-colors text-left"
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${saveState === 'saved' ? 'bg-primary/20' : 'bg-primary/10'}`}>
                 <Icon
                   name={saveState === 'saved' ? 'bookmark' : 'bookmark_add'}
                   filled={saveState === 'saved'}
-                  size={14}
+                  size={20}
+                  className="text-primary"
                 />
-                {saveState === 'saved' ? 'Saved!' : saveState === 'duplicate' ? 'Already saved' : saveState === 'saving' ? 'Saving…' : 'Save destination'}
-              </button>
-            </div>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm text-on-surface">
+                  {saveState === 'saved' ? 'Destination saved!' : saveState === 'duplicate' ? 'Already saved' : 'Save this destination'}
+                </p>
+                <p className="text-xs text-on-surface-variant truncate mt-0.5">{toLocation.name}</p>
+              </div>
+              {saveState === 'idle' && (
+                <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1.5 rounded-full shrink-0">Save</span>
+              )}
+            </button>
           )}
         </section>
 
         {/* Mode + Date + Time — hidden while a location field is focused */}
         {/* Mode toggle */}
-        <section className={isSearching ? 'hidden' : ''}>
+        <section ref={modeSectionRef} className={isSearching ? 'hidden' : ''}>
           <div className="flex bg-surface-container-low p-1 rounded-full">
-            {(['leave_now', 'leave_at', 'arrive_by'] as const).map((m) => (
+            {(['leave_now', 'leave_at'] as const).map((m) => (
               <button
                 key={m}
                 onClick={() => setMode(m)}
                 className={`flex-1 py-2.5 px-2 rounded-full text-sm font-semibold transition-all
                   ${mode === m ? 'bg-primary text-on-primary shadow-lg shadow-primary/20 font-bold' : 'text-on-surface-variant hover:text-primary'}`}
               >
-                {m === 'leave_now' ? 'Leave now' : m === 'leave_at' ? 'Leave at' : 'Arrive by'}
+                {m === 'leave_now' ? 'Leave now' : 'Leave at'}
               </button>
             ))}
           </div>
@@ -531,35 +605,39 @@ function SearchPageInner() {
         )}
 
         {/* Recents */}
-        {!isSearching && <section className="space-y-4">
-
-          <h3 className="font-headline font-bold text-lg">Recents</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { stopId: 'BEL9400413', name: 'Europa Bus Centre', sub: 'Great Victoria St', icon: 'directions_bus', span: true, lat: 54.5939, lon: -5.9363 },
-              { stopId: 'BEL1230001', name: "Queen's Uni", sub: 'University Road', icon: 'school', span: false, lat: 54.5843, lon: -5.9349 },
-              { stopId: 'LIS0010001', name: 'Lisburn', sub: 'Bus Station', icon: 'directions_bus', span: false, lat: 54.5163, lon: -6.0492 },
-            ].map((item) => (
-              <button
-                key={item.stopId}
-                className={`${item.span ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${item.span ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low transition-all active:scale-[0.99]`}
-                onClick={() => {
-                  const loc: SelectedLocation = { kind: 'stop', stopId: item.stopId, name: item.name, lat: item.lat, lon: item.lon }
-                  setToLocation(loc)
-                  setToQuery(item.name)
-                }}
-              >
-                <div className={`${item.span ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
-                  <Icon name={item.icon} size={item.span ? 20 : 16} />
-                </div>
-                <div>
-                  <span className="font-bold block text-sm text-on-surface">{item.name}</span>
-                  <span className="text-[11px] text-on-surface-variant">{item.sub}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </section>}
+        {!isSearching && recents.length > 0 && (
+          <section className="space-y-4">
+            <h3 className="font-headline font-bold text-lg">Recents</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {recents.slice(0, 4).map((item, i) => {
+                const isAddress = item.to_id.includes(',')
+                const icon = isAddress ? 'location_on' : 'directions_bus'
+                const isWide = i === 0
+                return (
+                  <button
+                    key={item.to_id}
+                    className={`${isWide ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${isWide ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low transition-all active:scale-[0.99]`}
+                    onClick={() => {
+                      const loc: SelectedLocation = isAddress
+                        ? { kind: 'address', name: item.to_label, lat: parseFloat(item.to_id.split(',')[0]), lon: parseFloat(item.to_id.split(',')[1]) }
+                        : { kind: 'stop', stopId: item.to_id, name: item.to_label, lat: 0, lon: 0 }
+                      setToLocation(loc)
+                      setToQuery(item.to_label)
+                    }}
+                  >
+                    <div className={`${isWide ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
+                      <Icon name={icon} size={isWide ? 20 : 16} />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-bold block text-sm text-on-surface truncate">{item.to_label}</span>
+                      <span className="text-[11px] text-on-surface-variant truncate block">from {item.from_label}</span>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
       </main>
 
       {/* Floating CTA */}
