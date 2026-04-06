@@ -1,6 +1,5 @@
 import { getSession } from '@/lib/auth'
 import Icon from '@/components/ui/Icon'
-import Link from 'next/link'
 import AuthForm from './AuthForm'
 import LogoutButton from './LogoutButton'
 
@@ -12,19 +11,12 @@ export default async function ProfilePage() {
   return (
     <>
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md h-16 flex items-center justify-between px-6">
-        <div className="flex items-center gap-3">
-          {session && (
-            <Link href="/" className="p-2 -ml-2 rounded-full hover:bg-surface-container transition-colors active:scale-95 text-primary">
-              <Icon name="arrow_back" size={22} />
-            </Link>
-          )}
-          <h1 className="text-2xl font-headline font-black text-primary tracking-tighter">
-            {session ? 'Account' : 'Sign in'}
-          </h1>
-        </div>
+        <h1 className="text-2xl font-headline font-black text-primary tracking-tighter">
+          {session ? 'Account' : 'Sign in'}
+        </h1>
       </header>
 
-      <main className="pt-24 px-6 max-w-2xl mx-auto pb-16">
+      <main className="pt-24 px-6 max-w-2xl mx-auto pb-32">
         {session ? (
           <div className="space-y-6">
             {/* Profile card */}

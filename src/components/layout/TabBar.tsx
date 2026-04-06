@@ -14,9 +14,6 @@ const tabs = [
 export default function TabBar() {
   const pathname = usePathname()
 
-  // Hide tab bar on the profile/auth page so unauthenticated users see a clean login screen
-  if (pathname === '/profile') return null
-
   return (
     <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md rounded-full border border-white/20 bg-white/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] flex justify-around items-center p-2 z-50">
       {tabs.map((tab) => {
