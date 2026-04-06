@@ -624,7 +624,6 @@ function SearchPageInner() {
                     name={showTimePicker ? 'expand_less' : 'expand_more'}
                     size={16}
                     className="text-outline transition-transform duration-200"
-                    style={{ transform: showTimePicker ? 'rotate(0deg)' : 'rotate(0deg)' }}
                   />
                 </button>
 
