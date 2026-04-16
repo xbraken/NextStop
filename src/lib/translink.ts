@@ -5,6 +5,7 @@ import type {
   TranslinkStop,
   Departure,
   Itinerary,
+  RankedItinerary,
   JourneyLeg,
 } from '@/types/translink'
 import { mockSearchStops, mockDepartures, mockJourney } from './mocks/translink'
@@ -275,4 +276,27 @@ export async function planJourney(params: {
     ptOptionsActive: '1',
   })
   return { itineraries: (data.journeys ?? []).map(mapJourney) }
+}
+
+export function rankItineraries(itineraries: Itinerary[]): RankedItinerary[] {
+  if (itineraries.length === 0) return []
+
+  const byDuration = [...itineraries].sort((a, b) => a.duration - b.duration)
+  const byTransfers = [...itineraries].sort((a, b) => a.transfers - b.transfers)
+
+  const fastest = byDuration[0]
+  const fewerChanges = byTransfers[0]
+  const alternative =
+    itineraries.find((i) => i.id !== fastest.id && i.id !== fewerChanges.id) ??
+    byDuration[1] ??
+    byDuration[0]
+
+  const fewerChangesResult =
+    fewerChanges.id === fastest.id ? (byTransfers[1] ?? byTransfers[0]) : fewerChanges
+
+  return [
+    { ...fastest, badge: 'Fastest' },
+    { ...fewerChangesResult, badge: 'Fewer Changes' },
+    { ...alternative, badge: 'Alternative' },
+  ]
 }

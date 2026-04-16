@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import type { RankedItinerary, JourneyLeg } from '@/types/translink'
-import { planJourney } from '@/lib/translink'
+import { planJourney, rankItineraries } from '@/lib/translink'
+
+export const runtime = 'nodejs'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -122,10 +124,18 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const time = sp.time ?? '09:00'
   const idx = parseInt(sp.idx ?? id ?? '0', 10)
 
-  const data = await planJourney({ from, to, date, time })
-  const journey: RankedItinerary | undefined = data.itineraries[idx] as RankedItinerary
+  let journey: RankedItinerary | undefined
+  if (to) {
+    try {
+      const data = await planJourney({ from, to, date, time })
+      const ranked = rankItineraries(data.itineraries)
+      journey = ranked[idx]
+    } catch (err) {
+      console.error('[journey/[id]] plan failed', err)
+    }
+  }
 
-  if (!journey) {
+  if (!journey || !journey.legs || journey.legs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <p className="text-on-surface-variant">Journey not found.</p>

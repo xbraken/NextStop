@@ -2,7 +2,10 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import LegVisualiser from '@/components/journey/LegVisualiser'
+import { planJourney, rankItineraries } from '@/lib/translink'
 import type { RankedItinerary } from '@/types/translink'
+
+export const runtime = 'nodejs'
 
 interface PageProps {
   searchParams: Promise<{
@@ -35,23 +38,11 @@ async function getJourneys(params: {
   date: string
   time: string
 }): Promise<RankedItinerary[]> {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${baseUrl}/api/translink/journey`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(params),
-    cache: 'no-store',
-  })
-  const text = await res.text()
-  if (!res.ok) {
-    console.error('[journey] api error', res.status, text.slice(0, 300))
-    return []
-  }
   try {
-    const data = JSON.parse(text)
-    return data.journeys ?? []
-  } catch (e) {
-    console.error('[journey] non-JSON response', res.status, text.slice(0, 300))
+    const data = await planJourney(params)
+    return rankItineraries(data.itineraries)
+  } catch (err) {
+    console.error('[journey] plan failed', err)
     return []
   }
 }

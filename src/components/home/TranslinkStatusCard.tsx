@@ -1,15 +1,10 @@
 import Icon from '@/components/ui/Icon'
-import type { Departure } from '@/types/translink'
+import { getDepartures } from '@/lib/translink'
 
 async function getStatusSummary() {
   try {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL ?? 'http://localhost:3000'}/api/translink/departures?stopId=BEL8270413`,
-      { next: { revalidate: 60 } }
-    )
-    if (!res.ok) throw new Error('Failed')
-    const data = await res.json()
-    const departures: Departure[] = data.departures ?? []
+    const data = await getDepartures('BEL8270413')
+    const departures = data.departures ?? []
     const delayed = departures.filter((d) => d.status === 'Delayed').length
     const cancelled = departures.filter((d) => d.status === 'Cancelled').length
 
