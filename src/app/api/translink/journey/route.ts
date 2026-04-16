@@ -39,8 +39,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'from, to, date and time are required' }, { status: 400 })
   }
 
-  const data = await planJourney({ from, to, date, time })
-  const ranked = rankItineraries(data.itineraries)
-
-  return NextResponse.json({ journeys: ranked })
+  try {
+    const data = await planJourney({ from, to, date, time })
+    const ranked = rankItineraries(data.itineraries)
+    return NextResponse.json({ journeys: ranked })
+  } catch (err) {
+    console.error('[api/translink/journey] failed', err)
+    return NextResponse.json({ error: 'Journey planning failed', detail: String(err) }, { status: 500 })
+  }
 }

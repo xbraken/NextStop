@@ -30,6 +30,7 @@ export function mockDepartures(stopId: string): { stopId: string; departures: De
       expectedDeparture: new Date(now.getTime() + 4 * 60_000).toISOString(),
       platform: '2',
       status: 'OnTime',
+      isLive: true,
     },
     {
       serviceId: '6B',
@@ -38,6 +39,7 @@ export function mockDepartures(stopId: string): { stopId: string; departures: De
       expectedDeparture: new Date(now.getTime() + 11 * 60_000).toISOString(),
       platform: '4',
       status: 'Delayed',
+      isLive: true,
     },
     {
       serviceId: '8A',
@@ -46,6 +48,7 @@ export function mockDepartures(stopId: string): { stopId: string; departures: De
       expectedDeparture: new Date(now.getTime() + 15 * 60_000).toISOString(),
       platform: '1',
       status: 'OnTime',
+      isLive: false,
     },
   ]
   return { stopId, departures }

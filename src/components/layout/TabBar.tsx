@@ -7,6 +7,7 @@ import Icon from '@/components/ui/Icon'
 const tabs = [
   { href: '/', icon: 'explore', label: 'Explore' },
   { href: '/search', icon: 'route', label: 'Plan' },
+  { href: '/live', icon: 'sensors', label: 'Live' },
   { href: '/saved', icon: 'bookmark', label: 'Saved' },
   { href: '/profile', icon: 'person', label: 'Account' },
 ]

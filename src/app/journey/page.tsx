@@ -42,9 +42,18 @@ async function getJourneys(params: {
     body: JSON.stringify(params),
     cache: 'no-store',
   })
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.journeys ?? []
+  const text = await res.text()
+  if (!res.ok) {
+    console.error('[journey] api error', res.status, text.slice(0, 300))
+    return []
+  }
+  try {
+    const data = JSON.parse(text)
+    return data.journeys ?? []
+  } catch (e) {
+    console.error('[journey] non-JSON response', res.status, text.slice(0, 300))
+    return []
+  }
 }
 
 async function JourneyResults({ searchParams }: PageProps) {

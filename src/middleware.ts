@@ -21,6 +21,6 @@ export const config = {
      * - /api/auth/* (auth endpoints)
      * - _next/static, _next/image, favicon, manifest, icons (Next.js internals + PWA assets)
      */
-    '/((?!profile|api/auth|_next/static|_next/image|favicon|manifest|icon).*)',
+    '/((?!profile|api|_next/static|_next/image|favicon|manifest|icon).*)',
   ],
 }

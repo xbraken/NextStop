@@ -17,6 +17,7 @@ export interface Departure {
   expectedDeparture: string
   platform?: string
   status: 'OnTime' | 'Delayed' | 'Cancelled'
+  isLive: boolean
 }
 
 export interface DeparturesResponse {
