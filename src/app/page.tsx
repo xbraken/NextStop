@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 
 async function getSavedDestinations(userId: number): Promise<SavedDestination[]> {
   const result = await db.execute({
-    sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY created_at DESC LIMIT 3',
+    sql: "SELECT * FROM saved_destinations WHERE user_id = ? AND (kind = 'destination' OR kind IS NULL) ORDER BY created_at DESC LIMIT 3",
     args: [userId],
   })
   return result.rows as unknown as SavedDestination[]

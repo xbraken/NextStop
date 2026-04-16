@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import LegVisualiser from '@/components/journey/LegVisualiser'
+import SaveRouteButton from './SaveRouteButton'
 import { planJourney, rankItineraries } from '@/lib/translink'
 import type { RankedItinerary } from '@/types/translink'
 
@@ -164,11 +165,19 @@ export default async function JourneyPage(props: PageProps) {
           <h2 className="text-3xl font-headline font-extrabold tracking-tight text-on-surface">
             {sp.fromName ?? 'Current Location'} → {sp.toName ?? 'Destination'}
           </h2>
-          <div className="flex items-center gap-2 text-on-surface-variant font-medium mt-1">
-            <Icon name="schedule" size={14} />
-            <span className="font-label tracking-wide uppercase text-xs">
-              Departing {sp.time ?? '09:00'}
-            </span>
+          <div className="flex items-center justify-between gap-4 mt-2">
+            <div className="flex items-center gap-2 text-on-surface-variant font-medium">
+              <Icon name="schedule" size={14} />
+              <span className="font-label tracking-wide uppercase text-xs">
+                Departing {sp.time ?? '09:00'}
+              </span>
+            </div>
+            <SaveRouteButton
+              fromId={sp.from ?? 'current'}
+              fromLabel={sp.fromName ?? 'Current Location'}
+              toId={sp.to ?? ''}
+              toLabel={sp.toName ?? 'Destination'}
+            />
           </div>
         </section>
 

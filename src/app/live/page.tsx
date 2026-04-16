@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
 import type { TranslinkStop, Departure } from '@/types/translink'
 
@@ -10,7 +11,20 @@ const POLL_MS = 15_000
 type SelectedStop = { stopId: string; stopName: string }
 
 export default function LivePage() {
-  const [stop, setStop] = useState<SelectedStop | null>(null)
+  return (
+    <Suspense fallback={null}>
+      <LivePageInner />
+    </Suspense>
+  )
+}
+
+function LivePageInner() {
+  const params = useSearchParams()
+  const presetId = params.get('stop')
+  const presetName = params.get('name')
+  const [stop, setStop] = useState<SelectedStop | null>(
+    presetId ? { stopId: presetId, stopName: presetName ?? presetId } : null
+  )
 
   return (
     <>
@@ -30,7 +44,14 @@ export default function LivePage() {
 
       <main className="pt-20 pb-32 px-6 max-w-2xl mx-auto">
         <StopPicker selected={stop} onSelect={setStop} onClear={() => setStop(null)} />
-        {stop && <DepartureBoard stop={stop} />}
+        {stop && (
+          <>
+            <div className="mt-4">
+              <SaveStopButton stop={stop} />
+            </div>
+            <DepartureBoard stop={stop} />
+          </>
+        )}
         {!stop && (
           <div className="mt-10 text-center text-on-surface-variant">
             <Icon name="pin_drop" size={48} className="mb-4 opacity-40" />
@@ -40,6 +61,55 @@ export default function LivePage() {
         )}
       </main>
     </>
+  )
+}
+
+function SaveStopButton({ stop }: { stop: SelectedStop }) {
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'duplicate' | 'error'>('idle')
+
+  // Reset when the selected stop changes
+  useEffect(() => {
+    setState('idle')
+  }, [stop.stopId])
+
+  async function save() {
+    setState('saving')
+    const res = await fetch('/api/saved', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'stop',
+        label: stop.stopName,
+        stop_name: stop.stopName,
+        stop_id: stop.stopId,
+      }),
+    })
+    if (res.status === 401) return setState('error')
+    if (res.status === 409) return setState('duplicate')
+    if (!res.ok) return setState('error')
+    setState('saved')
+  }
+
+  const { icon, text, disabled } = (() => {
+    switch (state) {
+      case 'saving': return { icon: 'hourglass_empty', text: 'Saving…', disabled: true }
+      case 'saved': return { icon: 'check_circle', text: 'Saved', disabled: true }
+      case 'duplicate': return { icon: 'bookmark', text: 'Already saved', disabled: true }
+      case 'error': return { icon: 'error', text: 'Sign in to save', disabled: true }
+      default: return { icon: 'bookmark_add', text: 'Save this stop', disabled: false }
+    }
+  })()
+
+  return (
+    <button
+      type="button"
+      onClick={save}
+      disabled={disabled}
+      className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-semibold active:scale-95 transition-all disabled:opacity-70"
+    >
+      <Icon name={icon} size={18} filled={state === 'saved'} />
+      {text}
+    </button>
   )
 }
 

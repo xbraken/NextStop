@@ -4,14 +4,19 @@ export interface User {
   created_at: string
 }
 
+export type SavedKind = 'destination' | 'stop' | 'route'
+
 export interface SavedDestination {
   id: number
   user_id: number
+  kind: SavedKind
   label: string
   stop_name: string
   stop_id: string
   lat: number | null
   lng: number | null
+  from_label: string | null
+  from_id: string | null
   created_at: string
 }
 
