@@ -8,10 +8,21 @@ import type {
   RankedItinerary,
   JourneyLeg,
 } from '@/types/translink'
-import { mockSearchStops, mockDepartures, mockJourney } from './mocks/translink'
+import { MOCK_STOPS, mockSearchStops, mockDepartures, mockJourney } from './mocks/translink'
 
 const BASE = 'https://opendata.translinkniplanner.co.uk/Ext_API'
 const isMock = () => process.env.TRANSLINK_MOCK === 'true'
+
+function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
 
 function headers() {
   const token = process.env.TRANSLINK_API_KEY ?? '6u83f0xduHw4GW67'
@@ -83,7 +94,12 @@ export async function searchStopsNear(
   lon: number,
   radius = 600
 ): Promise<StopsResponse> {
-  if (isMock()) return { stops: [] }
+  if (isMock()) {
+    const stops = MOCK_STOPS.filter(
+      (s) => haversineMeters(lat, lon, s.lat, s.lon) <= radius
+    )
+    return { stops }
+  }
 
   const data = await efaGet<{ locations?: EfaLocation[] }>('XML_COORD_REQUEST', {
     ext_macro: 'coord',
