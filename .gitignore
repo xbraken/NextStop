@@ -36,3 +36,6 @@ next-env.d.ts
 
 # vendor / private docs (not for redistribution)
 Translink JSON_Interface*.pdf
+
+# local sqlite files
+*.db
