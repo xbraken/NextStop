@@ -25,7 +25,8 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
 }
 
 function headers() {
-  const token = process.env.TRANSLINK_API_KEY ?? '6u83f0xduHw4GW67'
+  const token = process.env.TRANSLINK_API_KEY
+  if (!token) throw new Error('TRANSLINK_API_KEY is not set')
   return { 'X-API-TOKEN': token }
 }
 
