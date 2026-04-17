@@ -67,6 +67,26 @@ function nextNDays(n: number) {
 const HOURS = Array.from({ length: 24 }, (_, i) => pad(i))
 const MINUTES_5 = Array.from({ length: 12 }, (_, i) => pad(i * 5))
 
+function parseRoutes(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0)
+    )
+  )
+}
+
+function routeSort(a: string, b: string) {
+  // Sort numerically when both start with a number (so 3, 3a, 10, 10a order naturally)
+  const na = parseInt(a, 10)
+  const nb = parseInt(b, 10)
+  if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb
+  return a.localeCompare(b)
+}
+
 export default function LivePage() {
   return (
     <Suspense fallback={null}>
@@ -80,16 +100,24 @@ function LivePageInner() {
   const presetId = params.get('stop')
   const presetName = params.get('name')
   const presetDir = parseDirection(params.get('dir'))
+  const presetRoutes = parseRoutes(params.get('routes'))
 
   const [stop, setStop] = useState<SelectedStop | null>(
     presetId ? { stopId: presetId, stopName: presetName ?? presetId } : null
   )
   const [direction, setDirection] = useState<DirFilter>(presetDir)
+  // Selected routes to filter by. Empty array = "All".
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>(presetRoutes)
+  // Running list of route IDs seen in the current stop's departures, so the
+  // chip row keeps offering them even if a poll returns a subset.
+  const [knownRoutes, setKnownRoutes] = useState<string[]>(presetRoutes)
   const [timeMode, setTimeMode] = useState<TimeMode>({ kind: 'now' })
 
-  // Reset the direction filter when the user picks a different stop
+  // Reset filters when the user picks a different stop
   useEffect(() => {
     setDirection(presetDir)
+    setSelectedRoutes(presetRoutes)
+    setKnownRoutes(presetRoutes)
     setTimeMode({ kind: 'now' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stop?.stopId])
@@ -116,10 +144,27 @@ function LivePageInner() {
           <>
             <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
               <DirectionToggle value={direction} onChange={setDirection} />
-              <SaveStopButton stop={stop} direction={direction} />
+              <SaveStopButton stop={stop} direction={direction} routes={selectedRoutes} />
             </div>
+            <RouteFilter
+              known={knownRoutes}
+              selected={selectedRoutes}
+              onChange={setSelectedRoutes}
+            />
             <TimePicker value={timeMode} onChange={setTimeMode} />
-            <DepartureBoard stop={stop} direction={direction} timeMode={timeMode} />
+            <DepartureBoard
+              stop={stop}
+              direction={direction}
+              routes={selectedRoutes}
+              timeMode={timeMode}
+              onRoutesSeen={(ids) => {
+                setKnownRoutes((prev) => {
+                  const merged = new Set(prev)
+                  ids.forEach((id) => merged.add(id))
+                  return Array.from(merged)
+                })
+              }}
+            />
           </>
         )}
         {!stop && (
@@ -131,6 +176,69 @@ function LivePageInner() {
         )}
       </main>
     </>
+  )
+}
+
+function RouteFilter({
+  known,
+  selected,
+  onChange,
+}: {
+  known: string[]
+  selected: string[]
+  onChange: (ids: string[]) => void
+}) {
+  // Show any currently-selected id even if it isn't in `known` yet (eg. a
+  // saved preference for a route not in today's feed) so the user can see
+  // and un-toggle it.
+  const ids = Array.from(new Set([...known, ...selected])).sort(routeSort)
+  if (ids.length === 0) return null
+  const allActive = selected.length === 0
+  const selectedSet = new Set(selected)
+
+  function toggle(id: string) {
+    const next = new Set(selectedSet)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onChange(Array.from(next))
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+        Filter by route
+      </p>
+      <div className="flex gap-2 overflow-x-auto -mx-6 px-6 pb-1 scrollbar-none">
+        <button
+          type="button"
+          onClick={() => onChange([])}
+          className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+            allActive
+              ? 'bg-primary text-on-primary shadow-sm'
+              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          All
+        </button>
+        {ids.map((id) => {
+          const active = selectedSet.has(id)
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => toggle(id)}
+              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
+                active
+                  ? 'bg-primary text-on-primary shadow-sm'
+                  : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              {id}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -169,13 +277,22 @@ function DirectionToggle({
   )
 }
 
-function SaveStopButton({ stop, direction }: { stop: SelectedStop; direction: DirFilter }) {
+function SaveStopButton({
+  stop,
+  direction,
+  routes,
+}: {
+  stop: SelectedStop
+  direction: DirFilter
+  routes: string[]
+}) {
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'duplicate' | 'error'>('idle')
+  const routeSig = [...routes].sort().join(',')
 
-  // Reset when the stop OR direction changes (each direction variant is its own saved entry)
+  // Reset when stop, direction, or route filter changes (each combo is its own saved entry)
   useEffect(() => {
     setState('idle')
-  }, [stop.stopId, direction])
+  }, [stop.stopId, direction, routeSig])
 
   async function save() {
     setState('saving')
@@ -188,6 +305,7 @@ function SaveStopButton({ stop, direction }: { stop: SelectedStop; direction: Di
         stop_name: stop.stopName,
         stop_id: stop.stopId,
         direction,
+        routes,
       }),
     })
     if (res.status === 401) return setState('error')
@@ -196,10 +314,18 @@ function SaveStopButton({ stop, direction }: { stop: SelectedStop; direction: Di
     setState('saved')
   }
 
-  const defaultText =
-    direction === 'inbound' ? 'Save inbound' :
-    direction === 'outbound' ? 'Save outbound' :
-    'Save this stop'
+  const defaultText = (() => {
+    const dir =
+      direction === 'inbound' ? 'inbound' :
+      direction === 'outbound' ? 'outbound' :
+      ''
+    if (routes.length > 0) {
+      const list = [...routes].sort(routeSort).join('/')
+      return dir ? `Save ${dir} · ${list}` : `Save · ${list}`
+    }
+    if (direction) return `Save ${dir}`
+    return 'Save this stop'
+  })()
 
   const { icon, text, disabled } = (() => {
     switch (state) {
@@ -503,11 +629,15 @@ function StopPicker({
 function DepartureBoard({
   stop,
   direction,
+  routes,
   timeMode,
+  onRoutesSeen,
 }: {
   stop: SelectedStop
   direction: DirFilter
+  routes: string[]
   timeMode: TimeMode
+  onRoutesSeen: (ids: string[]) => void
 }) {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
@@ -516,6 +646,12 @@ function DepartureBoard({
   const isFuture = timeMode.kind === 'at'
   const futureDate = timeMode.kind === 'at' ? timeMode.date : ''
   const futureTime = timeMode.kind === 'at' ? timeMode.time : ''
+
+  // Keep the callback in a ref so it doesn't retrigger the polling effect.
+  const onRoutesSeenRef = useRef(onRoutesSeen)
+  useEffect(() => {
+    onRoutesSeenRef.current = onRoutesSeen
+  }, [onRoutesSeen])
 
   useEffect(() => {
     let cancelled = false
@@ -531,9 +667,14 @@ function DepartureBoard({
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json()
         if (cancelled) return
-        setDepartures(data.departures ?? [])
+        const list: Departure[] = data.departures ?? []
+        setDepartures(list)
         setUpdatedAt(Date.now())
         setError(false)
+        const ids = Array.from(
+          new Set(list.map((d) => d.serviceId).filter((id): id is string => !!id))
+        )
+        if (ids.length > 0) onRoutesSeenRef.current(ids)
       } catch {
         if (!cancelled) setError(true)
       }
@@ -557,9 +698,11 @@ function DepartureBoard({
     return () => clearInterval(id)
   }, [isFuture])
 
+  const routeSet = routes.length > 0 ? new Set(routes) : null
   type Tagged = { d: Departure; key: string; leaving: boolean }
   const tagged: Tagged[] = (departures ?? [])
     .filter((d) => matchesDirection(d.destination, direction))
+    .filter((d) => !routeSet || (d.serviceId && routeSet.has(d.serviceId)))
     .map((d, i) => {
       const key = `${d.serviceId}|${d.scheduledDeparture}|${d.destination}|${i}`
       if (isFuture) return { d, key, leaving: false }
@@ -596,6 +739,11 @@ function DepartureBoard({
         <div className="text-center py-10 text-on-surface-variant">
           {totalLoaded === 0 ? (
             <p className="font-medium">No departures in the next couple of hours</p>
+          ) : routes.length > 0 ? (
+            <p className="font-medium">
+              Nothing on {routes.join(', ')} right now — {totalLoaded} other departure
+              {totalLoaded === 1 ? '' : 's'} matching
+            </p>
           ) : (
             <p className="font-medium">
               No {direction} departures right now — {totalLoaded} going the other way

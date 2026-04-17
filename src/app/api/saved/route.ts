@@ -24,11 +24,26 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw } = body ?? {}
+  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw, routes: routesRaw } = body ?? {}
   const kind: 'destination' | 'stop' | 'route' =
     kindRaw === 'stop' || kindRaw === 'route' ? kindRaw : 'destination'
   const direction: 'inbound' | 'outbound' | null =
     kind === 'stop' && (dirRaw === 'inbound' || dirRaw === 'outbound') ? dirRaw : null
+
+  // Normalise the route-filter list: dedup, trim, sort so dedupe key is stable.
+  // Empty/absent means "All routes".
+  const routes: string | null = (() => {
+    if (kind !== 'stop') return null
+    if (!Array.isArray(routesRaw)) return null
+    const clean = Array.from(
+      new Set(
+        routesRaw
+          .map((r) => (typeof r === 'string' ? r.trim() : ''))
+          .filter((r) => r.length > 0)
+      )
+    ).sort()
+    return clean.length > 0 ? clean.join(',') : null
+  })()
 
   if (!label || !stop_id) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -46,9 +61,11 @@ export async function POST(req: NextRequest) {
     dedupSql = 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND from_id = ? AND stop_id = ?'
     dedupArgs = [session.userId, kind, from_id, stop_id]
   } else if (kind === 'stop') {
+    // Same stop can be saved once per (direction, route-filter) combo so users
+    // can keep distinct preferences (e.g. "stop X, 3a/3b only" vs "stop X, all").
     dedupSql =
-      'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ? AND (direction IS ? OR direction = ?)'
-    dedupArgs = [session.userId, kind, stop_id, direction, direction]
+      'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ? AND (direction IS ? OR direction = ?) AND (routes IS ? OR routes = ?)'
+    dedupArgs = [session.userId, kind, stop_id, direction, direction, routes, routes]
   } else {
     dedupSql = 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ?'
     dedupArgs = [session.userId, kind, stop_id]
@@ -60,7 +77,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction, routes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
     args: [
       session.userId,
       kind,
@@ -72,6 +89,7 @@ export async function POST(req: NextRequest) {
       kind === 'route' ? from_label : null,
       kind === 'route' ? from_id : null,
       direction,
+      routes,
     ],
   })
   return NextResponse.json({ destination: result.rows[0] }, { status: 201 })

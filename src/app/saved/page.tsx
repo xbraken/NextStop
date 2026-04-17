@@ -23,10 +23,12 @@ function iconFor(kind: SavedKind, label: string, stopId: string): string {
 function hrefFor(item: SavedDestination): string {
   switch (item.kind) {
     case 'stop': {
-      const base =
+      let url =
         `/live?stop=${encodeURIComponent(item.stop_id)}` +
         `&name=${encodeURIComponent(item.stop_name)}`
-      return item.direction ? `${base}&dir=${item.direction}` : base
+      if (item.direction) url += `&dir=${item.direction}`
+      if (item.routes) url += `&routes=${encodeURIComponent(item.routes)}`
+      return url
     }
     case 'route':
       return (
@@ -44,9 +46,15 @@ function subtitle(item: SavedDestination): string {
   if (item.kind === 'route') {
     return `${item.from_label ?? 'Current Location'} → ${item.stop_name}`
   }
-  if (item.kind === 'stop' && item.direction) {
-    const arrow = item.direction === 'inbound' ? '↓' : '↑'
-    return `${arrow} ${item.direction} · ${item.stop_name}`
+  if (item.kind === 'stop') {
+    const parts: string[] = []
+    if (item.direction) {
+      const arrow = item.direction === 'inbound' ? '↓' : '↑'
+      parts.push(`${arrow} ${item.direction}`)
+    }
+    if (item.routes) parts.push(`routes ${item.routes.split(',').join(', ')}`)
+    parts.push(item.stop_name)
+    return parts.join(' · ')
   }
   return item.stop_name
 }
