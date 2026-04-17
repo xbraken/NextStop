@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
+import ScrollPicker from '@/components/ui/ScrollPicker'
 import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { matchesDirection, parseDirection } from '@/lib/direction'
@@ -63,7 +64,8 @@ function nextNDays(n: number) {
   return out
 }
 
-const TIME_PRESETS = ['07:00', '09:00', '12:00', '15:00', '17:00', '19:00', '21:00']
+const HOURS = Array.from({ length: 24 }, (_, i) => pad(i))
+const MINUTES_5 = Array.from({ length: 12 }, (_, i) => pad(i * 5))
 
 export default function LivePage() {
   return (
@@ -234,19 +236,36 @@ function TimePicker({
   const [open, setOpen] = useState(false)
   const isFuture = value.kind === 'at'
 
-  // The day the user has tapped but not yet committed by tapping a time.
-  // Starts on the current selection, or today.
-  const [pendingDay, setPendingDay] = useState(
-    value.kind === 'at' ? value.date : todayISODate()
-  )
+  // The day + time the user has dialled in but not yet committed.
+  // Starts from current selection, or today + a sensible default time.
+  const initial = (() => {
+    if (value.kind === 'at') {
+      const [hh = '09', mm = '00'] = value.time.split(':')
+      return { date: value.date, hour: parseInt(hh, 10), minute: parseInt(mm, 10) }
+    }
+    const now = new Date()
+    // Round up to the next 5-min mark so the wheel doesn't open in the past.
+    const m = (Math.floor(now.getMinutes() / 5) + 1) * 5
+    const h = m >= 60 ? (now.getHours() + 1) % 24 : now.getHours()
+    return { date: todayISODate(), hour: h, minute: m % 60 }
+  })()
+  const [pendingDay, setPendingDay] = useState(initial.date)
+  const [hour, setHour] = useState(initial.hour)
+  const [minute, setMinute] = useState(initial.minute)
+
   useEffect(() => {
-    if (value.kind === 'at') setPendingDay(value.date)
+    if (value.kind === 'at') {
+      setPendingDay(value.date)
+      const [hh = '09', mm = '00'] = value.time.split(':')
+      setHour(parseInt(hh, 10))
+      setMinute(parseInt(mm, 10))
+    }
   }, [value])
 
   const days = nextNDays(7)
 
-  function pickTime(time: string) {
-    onChange({ kind: 'at', date: pendingDay, time })
+  function apply() {
+    onChange({ kind: 'at', date: pendingDay, time: `${pad(hour)}:${pad(minute)}` })
     setOpen(false)
   }
 
@@ -343,31 +362,33 @@ function TimePicker({
             </div>
           </div>
 
-          {/* Time row */}
+          {/* Time wheel */}
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-              2. Pick a time
+              2. Spin to a time
             </p>
-            <div className="grid grid-cols-4 gap-2">
-              {TIME_PRESETS.map((t) => {
-                const active = isFuture && value.date === pendingDay && value.time === t
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => pickTime(t)}
-                    className={`py-2.5 rounded-xl text-sm font-headline font-bold tabular-nums transition-all active:scale-95 ${
-                      active
-                        ? 'bg-primary text-on-primary shadow-md'
-                        : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                )
-              })}
+            <div className="flex items-center justify-center gap-1 py-1">
+              <ScrollPicker
+                items={HOURS}
+                selectedIndex={hour}
+                onChange={setHour}
+              />
+              <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
+              <ScrollPicker
+                items={MINUTES_5}
+                selectedIndex={Math.round(minute / 5)}
+                onChange={(i) => setMinute(i * 5)}
+              />
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={apply}
+            className="w-full py-3 rounded-full bg-primary text-on-primary font-headline font-bold text-sm shadow-md active:scale-95 transition-all"
+          >
+            Show times for {pad(hour)}:{pad(minute)}
+          </button>
         </div>
       )}
     </div>
