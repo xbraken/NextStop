@@ -10,28 +10,60 @@ import type { SavedDestination } from '@/types/user'
 
 export const runtime = 'nodejs'
 
-async function getSavedDestinations(userId: number): Promise<SavedDestination[]> {
+interface SavedGroups {
+  destinations: SavedDestination[]
+  stops: SavedDestination[]
+  routes: SavedDestination[]
+}
+
+async function getSavedGrouped(userId: number): Promise<SavedGroups> {
+  // One round trip; cap rows so a power user with 200 saved entries doesn't
+  // bloat the homepage payload. Per-section caps applied client-side.
   const result = await db.execute({
-    sql: "SELECT * FROM saved_destinations WHERE user_id = ? AND (kind = 'destination' OR kind IS NULL) ORDER BY created_at DESC LIMIT 3",
+    sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
     args: [userId],
   })
-  return result.rows as unknown as SavedDestination[]
+  const rows = result.rows as unknown as SavedDestination[]
+  return {
+    destinations: rows.filter((r) => r.kind === 'destination' || r.kind == null).slice(0, 3),
+    stops: rows.filter((r) => r.kind === 'stop').slice(0, 6),
+    routes: rows.filter((r) => r.kind === 'route').slice(0, 6),
+  }
 }
 
 // Streamed inside Suspense so the hero search renders without waiting on the
 // DB round trip. Both migrate + session checks are parallelised.
 async function SavedSection() {
   const [, session] = await Promise.all([ensureMigrated(), getSession()])
-  const saved = session ? await getSavedDestinations(session.userId) : []
-  return <SavedSectionView saved={saved} />
+  const groups: SavedGroups = session
+    ? await getSavedGrouped(session.userId)
+    : { destinations: [], stops: [], routes: [] }
+  return <SavedSectionView groups={groups} />
 }
 
-function SavedSectionView({ saved }: { saved: SavedDestination[] }) {
+function stopHref(item: SavedDestination): string {
+  const base = `/live?stop=${encodeURIComponent(item.stop_id)}&name=${encodeURIComponent(item.stop_name)}`
+  return item.direction ? `${base}&dir=${item.direction}` : base
+}
+
+function routeHref(item: SavedDestination): string {
+  return (
+    `/journey?from=${encodeURIComponent(item.from_id ?? 'current')}` +
+    `&fromName=${encodeURIComponent(item.from_label ?? 'Current Location')}` +
+    `&to=${encodeURIComponent(item.stop_id)}` +
+    `&toName=${encodeURIComponent(item.stop_name)}`
+  )
+}
+
+function SavedSectionView({ groups }: { groups: SavedGroups }) {
+  const { destinations, stops, routes } = groups
+  const hasAnything = destinations.length + stops.length + routes.length > 0
+
   return (
     <>
-      {saved.length > 0 && (
+      {destinations.length > 0 && (
         <div className="flex gap-3 overflow-x-auto hide-scrollbar">
-          {saved.slice(0, 3).map((dest, i) => (
+          {destinations.map((dest, i) => (
             <Link
               key={dest.id}
               href={`/search?to=${encodeURIComponent(dest.stop_id)}&toName=${encodeURIComponent(dest.label)}`}
@@ -51,11 +83,11 @@ function SavedSectionView({ saved }: { saved: SavedDestination[] }) {
             Saved Destinations
           </h2>
           <Link href="/saved" className="text-primary text-sm font-bold">
-            {saved.length > 0 ? 'Edit' : 'Add'}
+            {hasAnything ? 'Edit' : 'Add'}
           </Link>
         </div>
 
-        {saved.length === 0 ? (
+        {destinations.length === 0 ? (
           <Link
             href="/search"
             className="flex flex-col items-center justify-center gap-3 p-10 bg-surface-container-lowest rounded-xl border-2 border-dashed border-outline-variant/40 hover:border-primary/40 hover:bg-primary/5 transition-all"
@@ -71,21 +103,21 @@ function SavedSectionView({ saved }: { saved: SavedDestination[] }) {
         ) : (
           <div className="grid grid-cols-2 gap-4">
             <Link
-              href={`/search?to=${encodeURIComponent(saved[0].stop_id)}&toName=${encodeURIComponent(saved[0].label)}`}
+              href={`/search?to=${encodeURIComponent(destinations[0].stop_id)}&toName=${encodeURIComponent(destinations[0].label)}`}
               className="col-span-2 p-8 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.04)] hover:shadow-md transition-shadow relative overflow-hidden group"
             >
               <div className="relative z-10">
                 <span className="text-primary/40 block mb-1 text-sm font-medium">Favourite</span>
                 <h3 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface">
-                  {saved[0].label}
+                  {destinations[0].label}
                 </h3>
               </div>
               <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:opacity-[0.06] transition-opacity">
-                <Icon name={iconForDestination(saved[0])} size={120} />
+                <Icon name={iconForDestination(destinations[0])} size={120} />
               </div>
             </Link>
 
-            {saved.slice(1).map((dest) => (
+            {destinations.slice(1).map((dest) => (
               <Link
                 key={dest.id}
                 href={`/search?to=${encodeURIComponent(dest.stop_id)}&toName=${encodeURIComponent(dest.label)}`}
@@ -97,7 +129,7 @@ function SavedSectionView({ saved }: { saved: SavedDestination[] }) {
               </Link>
             ))}
 
-            {saved.length === 2 && (
+            {destinations.length === 2 && (
               <Link
                 href="/search"
                 className="p-6 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.04)] hover:shadow-md transition-shadow border-2 border-dashed border-outline-variant/30 hover:border-primary/30 flex flex-col items-center justify-center gap-2"
@@ -109,6 +141,75 @@ function SavedSectionView({ saved }: { saved: SavedDestination[] }) {
           </div>
         )}
       </section>
+
+      {stops.length > 0 && (
+        <section className="space-y-3 animate-fade-in-up animate-stagger mt-8" style={{ animationDelay: '0.16s' }}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
+              Saved Stops
+            </h2>
+            <Link href="/live" className="text-primary text-sm font-bold">
+              Live
+            </Link>
+          </div>
+          <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1">
+            {stops.map((stop, i) => (
+              <Link
+                key={stop.id}
+                href={stopHref(stop)}
+                style={{ animationDelay: `${0.18 + i * 0.04}s` }}
+                className="animate-fade-in animate-stagger group shrink-0 w-44 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+                  <Icon name="directions_bus" size={18} className="text-primary" filled />
+                </div>
+                <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
+                <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
+                  {stop.direction
+                    ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
+                    : 'Live arrivals'}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {routes.length > 0 && (
+        <section className="space-y-3 animate-fade-in-up animate-stagger mt-8" style={{ animationDelay: '0.20s' }}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
+              Saved Routes
+            </h2>
+            <Link href="/saved" className="text-primary text-sm font-bold">
+              All
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {routes.map((route, i) => (
+              <Link
+                key={route.id}
+                href={routeHref(route)}
+                style={{ animationDelay: `${0.22 + i * 0.04}s` }}
+                className="animate-fade-in animate-stagger flex items-center gap-3 p-3 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Icon name="route" size={18} className="text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-sm text-on-surface truncate">{route.label}</p>
+                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5 flex items-center gap-1">
+                    <span className="truncate">{route.from_label ?? 'Current Location'}</span>
+                    <Icon name="arrow_forward" size={11} className="text-outline shrink-0" />
+                    <span className="truncate">{route.stop_name}</span>
+                  </p>
+                </div>
+                <Icon name="chevron_right" size={18} className="text-outline shrink-0" />
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   )
 }
