@@ -262,6 +262,16 @@ function mapJourney(j: EfaJourney, idx: number): Itinerary {
 // resolve the user's location — better than sending an unresolvable token.
 const FALLBACK_COORD = { lat: '54.5968', lon: '-5.9301' }
 
+// EFA's coverage is Northern Ireland only. Any coordinate outside this box
+// is meaningless to the planner, so we snap it back to Belfast centre.
+const NI_BBOX = { west: -8.2, south: 54.0, east: -5.4, north: 55.3 }
+function isInNI(lat: number, lon: number) {
+  return (
+    lat >= NI_BBOX.south && lat <= NI_BBOX.north &&
+    lon >= NI_BBOX.west && lon <= NI_BBOX.east
+  )
+}
+
 function localityParams(value: string, suffix: 'origin' | 'destination') {
   // 'current' means "use current geolocation" but geolocation wasn't
   // available — fall back to Belfast centre so EFA returns something.
@@ -275,10 +285,14 @@ function localityParams(value: string, suffix: 'origin' | 'destination') {
   // EFA coord format is "<lon>:<lat>:WGS84[DD.DDDDD]".
   const coordMatch = value.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/)
   if (coordMatch) {
-    const [, lat, lon] = coordMatch
+    const [, latStr, lonStr] = coordMatch
+    const lat = parseFloat(latStr)
+    const lon = parseFloat(lonStr)
+    const useLat = isInNI(lat, lon) ? latStr : FALLBACK_COORD.lat
+    const useLon = isInNI(lat, lon) ? lonStr : FALLBACK_COORD.lon
     return {
       [`type_${suffix}`]: 'coord',
-      [`name_${suffix}`]: `${lon}:${lat}:WGS84[DD.DDDDD]`,
+      [`name_${suffix}`]: `${useLon}:${useLat}:WGS84[DD.DDDDD]`,
     }
   }
   return {

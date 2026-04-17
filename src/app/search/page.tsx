@@ -377,11 +377,15 @@ function SearchPageInner() {
   const [showTimePicker, setShowTimePicker] = useState(false)
   const modeSectionRef = useRef<HTMLElement>(null)
 
-  // Get device location for real FROM coordinates
+  // Get device location for real FROM coordinates. EFA only knows Northern
+  // Ireland, so a coord outside the NI bbox (e.g. user on a VPN, or coarse
+  // IP geolocation snapping to GB) would produce zero results — leave
+  // fromLocation null in that case so the planner falls back to Belfast.
   useEffect(() => {
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        if (!inNI(coords.latitude, coords.longitude)) return
         setFromLocation({ kind: 'address', name: 'Current Location', lat: coords.latitude, lon: coords.longitude })
       },
       () => {} // permission denied or unavailable — silently fall back

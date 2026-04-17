@@ -44,12 +44,23 @@ async function getJourneys(params: {
   }
 }
 
+function isCoordOutsideNI(value: string): boolean {
+  const m = value.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/)
+  if (!m) return false
+  const lat = parseFloat(m[1])
+  const lon = parseFloat(m[2])
+  return !(lat >= 54.0 && lat <= 55.3 && lon >= -8.2 && lon <= -5.4)
+}
+
 async function JourneyResults({ searchParams }: PageProps) {
   const sp = await searchParams
   const from = sp.from ?? 'current'
   const to = sp.to ?? ''
   const date = sp.date ?? new Date().toISOString().split('T')[0]
   const time = sp.time ?? '09:00'
+
+  const fromOutsideNI = isCoordOutsideNI(from)
+  const toOutsideNI = isCoordOutsideNI(to)
 
   const journeys = await getJourneys({ from, to, date, time })
 
@@ -132,7 +143,17 @@ async function JourneyResults({ searchParams }: PageProps) {
             <Icon name="search_off" size={40} className="opacity-40" />
           </div>
           <p className="font-headline font-bold text-lg text-on-surface">No journeys found</p>
-          <p className="text-sm mt-1">Try adjusting your time or date</p>
+          {fromOutsideNI || toOutsideNI ? (
+            <p className="text-sm mt-1 max-w-xs mx-auto">
+              {fromOutsideNI && toOutsideNI
+                ? 'Both locations look outside Northern Ireland — Translink only covers NI.'
+                : fromOutsideNI
+                  ? 'Your starting point looks outside Northern Ireland — try picking a NI address.'
+                  : 'The destination looks outside Northern Ireland — try picking a NI address.'}
+            </p>
+          ) : (
+            <p className="text-sm mt-1">Try adjusting your time or date</p>
+          )}
         </div>
       )}
     </div>
