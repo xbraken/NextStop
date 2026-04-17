@@ -34,14 +34,6 @@ function tomorrowISODate() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function addToNow(minutes: number): { date: string; time: string } {
-  const d = new Date(Date.now() + minutes * 60_000)
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  }
-}
-
 function formatTimeMode(mode: TimeMode) {
   if (mode.kind === 'now') return 'Now'
   const label = mode.date === todayISODate()
@@ -51,6 +43,27 @@ function formatTimeMode(mode: TimeMode) {
       : new Date(mode.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
   return `${label} · ${mode.time}`
 }
+
+// Build the next N days starting from today — used by the day-chip row.
+// First two are labelled "Today" / "Tomorrow" because those phrase
+// naturally; after that we use the short weekday ("Wed", "Thu").
+function nextNDays(n: number) {
+  const out: Array<{ iso: string; label: string; day: string }> = []
+  for (let i = 0; i < n; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() + i)
+    const iso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const short = d.toLocaleDateString('en-GB', { weekday: 'short' })
+    out.push({
+      iso,
+      label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : short,
+      day: String(d.getDate()),
+    })
+  }
+  return out
+}
+
+const TIME_PRESETS = ['07:00', '09:00', '12:00', '15:00', '17:00', '19:00', '21:00']
 
 export default function LivePage() {
   return (
@@ -221,27 +234,19 @@ function TimePicker({
   const [open, setOpen] = useState(false)
   const isFuture = value.kind === 'at'
 
-  const initial = value.kind === 'at' ? value : { date: todayISODate(), time: addToNow(15).time }
-  const [date, setDate] = useState(initial.date)
-  const [time, setTime] = useState(initial.time)
-
-  // Keep the panel inputs in sync when the parent value changes (e.g. quick chip).
+  // The day the user has tapped but not yet committed by tapping a time.
+  // Starts on the current selection, or today.
+  const [pendingDay, setPendingDay] = useState(
+    value.kind === 'at' ? value.date : todayISODate()
+  )
   useEffect(() => {
-    if (value.kind === 'at') {
-      setDate(value.date)
-      setTime(value.time)
-    }
+    if (value.kind === 'at') setPendingDay(value.date)
   }, [value])
 
-  function applyQuick(minutes: number) {
-    const next = addToNow(minutes)
-    onChange({ kind: 'at', date: next.date, time: next.time })
-    setOpen(false)
-  }
+  const days = nextNDays(7)
 
-  function applyManual() {
-    if (!date || !time) return
-    onChange({ kind: 'at', date, time })
+  function pickTime(time: string) {
+    onChange({ kind: 'at', date: pendingDay, time })
     setOpen(false)
   }
 
@@ -291,73 +296,77 @@ function TimePicker({
       </button>
 
       {open && (
-        <div className="mt-3 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-4">
+        <div className="mt-3 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-5">
+          {/* Day row */}
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-              Quick
+              1. Pick a day
             </p>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { label: '+15 min', mins: 15 },
-                { label: '+30 min', mins: 30 },
-                { label: '+1 hr', mins: 60 },
-                { label: '+2 hrs', mins: 120 },
-              ].map((q) => (
-                <button
-                  key={q.label}
-                  type="button"
-                  onClick={() => applyQuick(q.mins)}
-                  className="px-3 py-1.5 rounded-full bg-surface-container text-xs font-semibold hover:bg-surface-container-high active:scale-95 transition-all"
-                >
-                  {q.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                Date
-              </span>
-              <input
-                type="date"
-                value={date}
-                min={todayISODate()}
-                onChange={(e) => setDate(e.target.value)}
-                className="bg-surface-container rounded-lg px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-                Time
-              </span>
-              <input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                className="bg-surface-container rounded-lg px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
-              />
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-1">
-            {isFuture && (
+            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
               <button
                 type="button"
                 onClick={reset}
-                className="px-4 py-2 rounded-full text-sm font-semibold text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all"
+                className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
+                  !isFuture
+                    ? 'bg-primary text-on-primary border-primary shadow-md'
+                    : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
+                }`}
               >
-                Reset to now
+                <Icon name="bolt" filled size={18} />
+                <span className="text-xs font-bold">Now</span>
               </button>
-            )}
-            <button
-              type="button"
-              onClick={applyManual}
-              className="px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-bold active:scale-95 transition-all"
-            >
-              Show times
-            </button>
+              {days.map((d) => {
+                const active = pendingDay === d.iso && isFuture
+                const selected = pendingDay === d.iso
+                return (
+                  <button
+                    key={d.iso}
+                    type="button"
+                    onClick={() => setPendingDay(d.iso)}
+                    className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
+                      active
+                        ? 'bg-primary text-on-primary border-primary shadow-md'
+                        : selected
+                          ? 'bg-primary/10 border-primary/40 text-primary'
+                          : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
+                    }`}
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider">{d.label}</span>
+                    <span className={`text-lg font-headline font-extrabold leading-none ${
+                      active ? '' : 'text-on-surface-variant'
+                    }`}>
+                      {d.day}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Time row */}
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+              2. Pick a time
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {TIME_PRESETS.map((t) => {
+                const active = isFuture && value.date === pendingDay && value.time === t
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => pickTime(t)}
+                    className={`py-2.5 rounded-xl text-sm font-headline font-bold tabular-nums transition-all active:scale-95 ${
+                      active
+                        ? 'bg-primary text-on-primary shadow-md'
+                        : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
