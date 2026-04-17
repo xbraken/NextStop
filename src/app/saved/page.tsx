@@ -4,6 +4,7 @@ import { ensureMigrated } from '@/lib/db-init'
 import Icon from '@/components/ui/Icon'
 import Link from 'next/link'
 import type { SavedDestination, SavedKind } from '@/types/user'
+import { getSavedColor } from '@/lib/saved-colors'
 import SavedActions from './SavedActions'
 
 export const runtime = 'nodejs'
@@ -99,20 +100,24 @@ function Section({
             className="animate-fade-in-up animate-stagger flex items-center gap-3 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md transition-shadow duration-200"
           >
             <Link href={hrefFor(item)} className="flex items-center gap-3 flex-1 min-w-0">
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center shrink-0">
-                <Icon
-                  name={iconFor(item.kind, item.label, item.stop_id)}
-                  filled={item.kind === 'destination'}
-                  size={22}
-                  className="text-primary"
-                />
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: getSavedColor(item.color).bg }}
+              >
+                <span style={{ color: getSavedColor(item.color).fg }}>
+                  <Icon
+                    name={iconFor(item.kind, item.label, item.stop_id)}
+                    filled={item.kind === 'destination'}
+                    size={22}
+                  />
+                </span>
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-on-surface truncate">{item.label}</p>
                 <p className="text-sm text-on-surface-variant truncate">{subtitle(item)}</p>
               </div>
             </Link>
-            <SavedActions destId={item.id} />
+            <SavedActions destId={item.id} currentColor={item.color} />
           </div>
         ))
       )}

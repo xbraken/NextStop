@@ -100,7 +100,8 @@ function LivePageInner() {
   const presetId = params.get('stop')
   const presetName = params.get('name')
   const presetDir = parseDirection(params.get('dir'))
-  const presetRoutes = parseRoutes(params.get('routes'))
+  const presetRoutesRaw = params.get('routes') ?? ''
+  const presetRoutes = parseRoutes(presetRoutesRaw)
 
   const [stop, setStop] = useState<SelectedStop | null>(
     presetId ? { stopId: presetId, stopName: presetName ?? presetId } : null
@@ -113,14 +114,30 @@ function LivePageInner() {
   const [knownRoutes, setKnownRoutes] = useState<string[]>(presetRoutes)
   const [timeMode, setTimeMode] = useState<TimeMode>({ kind: 'now' })
 
-  // Reset filters when the user picks a different stop
+  // Keep the stop in sync with the URL — navigating between saved stops on the
+  // same /live route reuses this component instance, so we must mirror params
+  // back into state rather than relying on useState initialisers.
+  useEffect(() => {
+    if (!presetId) {
+      setStop(null)
+      return
+    }
+    setStop((prev) =>
+      prev && prev.stopId === presetId && prev.stopName === (presetName ?? presetId)
+        ? prev
+        : { stopId: presetId, stopName: presetName ?? presetId }
+    )
+  }, [presetId, presetName])
+
+  // Reset filters when any of the preset inputs change (stop id, direction, or
+  // route filter from the URL). Depending on the serialised routes string
+  // avoids an infinite loop from the fresh-array identity each render.
   useEffect(() => {
     setDirection(presetDir)
-    setSelectedRoutes(presetRoutes)
-    setKnownRoutes(presetRoutes)
+    setSelectedRoutes(parseRoutes(presetRoutesRaw))
+    setKnownRoutes(parseRoutes(presetRoutesRaw))
     setTimeMode({ kind: 'now' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stop?.stopId])
+  }, [presetId, presetDir, presetRoutesRaw])
 
   return (
     <>
@@ -192,14 +209,25 @@ function RouteFilter({
   // saved preference for a route not in today's feed) so the user can see
   // and un-toggle it.
   const ids = Array.from(new Set([...known, ...selected])).sort(routeSort)
-  if (ids.length === 0) return null
   const allActive = selected.length === 0
   const selectedSet = new Set(selected)
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
 
   function toggle(id: string) {
     const next = new Set(selectedSet)
     if (next.has(id)) next.delete(id)
     else next.add(id)
+    onChange(Array.from(next))
+  }
+
+  function commitDraft() {
+    const id = draft.trim()
+    setDraft('')
+    setAdding(false)
+    if (!id) return
+    const next = new Set(selectedSet)
+    next.add(id)
     onChange(Array.from(next))
   }
 
@@ -237,6 +265,33 @@ function RouteFilter({
             </button>
           )
         })}
+        {adding ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitDraft()
+              else if (e.key === 'Escape') {
+                setDraft('')
+                setAdding(false)
+              }
+            }}
+            placeholder="e.g. 3d"
+            className="flex-shrink-0 w-24 px-4 py-1.5 rounded-full text-xs font-bold bg-surface-container-low text-on-surface outline-none border border-primary/40 placeholder:text-outline"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-surface-container-low text-on-surface-variant hover:text-on-surface active:scale-95 transition-all"
+            aria-label="Add a route not in the list"
+          >
+            <Icon name="add" size={14} />
+            Add
+          </button>
+        )}
       </div>
     </div>
   )

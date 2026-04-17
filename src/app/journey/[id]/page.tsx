@@ -269,7 +269,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
         </button>
       </header>
 
-      <main className="pt-24 pb-40 px-6 max-w-2xl mx-auto">
+      <main className="pt-24 pb-48 px-6 max-w-2xl mx-auto">
         <Suspense fallback={<JourneyDetailSkeleton toName={toName} />}>
           <JourneyDetail
             from={from}
@@ -283,13 +283,17 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
         </Suspense>
       </main>
 
-      {/* Bottom action */}
-      <div className="fixed bottom-0 left-0 w-full p-6 bg-gradient-to-t from-surface via-surface/90 to-transparent pointer-events-none">
+      {/* Bottom action — sits above the floating tab bar (which is ~88px tall
+          with its 24px bottom offset) so they never overlap. */}
+      <div className="fixed bottom-24 left-0 w-full px-6 z-50 pointer-events-none">
         <div className="max-w-2xl mx-auto pointer-events-auto">
-          <button className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold py-5 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform text-lg">
+          <Link
+            href={`/journey/${id}/go?from=${encodeURIComponent(from)}&fromName=${encodeURIComponent(sp.fromName ?? '')}&to=${encodeURIComponent(to)}&toName=${encodeURIComponent(toName)}&date=${date}&time=${time}&mode=${mode}&idx=${idx}`}
+            className="w-full bg-gradient-to-br from-primary to-primary-container text-on-primary font-headline font-bold py-5 rounded-full shadow-2xl shadow-primary/30 flex items-center justify-center gap-3 active:scale-[0.98] transition-transform text-lg"
+          >
             <Icon name="play_arrow" filled size={24} className="text-on-primary" />
             Start Journey
-          </button>
+          </Link>
         </div>
       </div>
     </>

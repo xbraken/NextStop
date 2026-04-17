@@ -20,6 +20,7 @@ export interface SavedDestination {
   from_id: string | null
   direction: StopDirection | null
   routes: string | null
+  color: string | null
   created_at: string
 }
 

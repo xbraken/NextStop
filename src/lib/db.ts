@@ -32,6 +32,7 @@ export async function migrate() {
     "ALTER TABLE saved_destinations ADD COLUMN from_id TEXT",
     "ALTER TABLE saved_destinations ADD COLUMN direction TEXT",
     "ALTER TABLE saved_destinations ADD COLUMN routes TEXT",
+    "ALTER TABLE saved_destinations ADD COLUMN color TEXT",
   ]) {
     try { await db.execute(sql) } catch { /* column already exists */ }
   }
@@ -57,6 +58,7 @@ export async function migrate() {
       from_id TEXT,
       direction TEXT,
       routes TEXT,
+      color TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 

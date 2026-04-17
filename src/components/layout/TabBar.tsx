@@ -15,8 +15,12 @@ const tabs = [
 export default function TabBar() {
   const pathname = usePathname()
 
+  // Hidden in "Go" mode (focused live-companion view) so the giant action
+  // strip has the full bottom area to breathe.
+  if (pathname.endsWith('/go')) return null
+
   return (
-    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md rounded-full border border-white/20 bg-white/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] flex justify-around items-center p-2 z-50">
+    <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-md rounded-full border border-white/20 bg-white/80 backdrop-blur-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] flex justify-around items-center p-2 z-40">
       {tabs.map((tab) => {
         const active =
           tab.href === '/'

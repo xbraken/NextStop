@@ -3,6 +3,7 @@ import type { InArgs } from '@libsql/client'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
+import { isValidColorKey } from '@/lib/saved-colors'
 
 export const runtime = 'nodejs'
 
@@ -24,7 +25,8 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw, routes: routesRaw } = body ?? {}
+  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw, routes: routesRaw, color: colorRaw } = body ?? {}
+  const color: string | null = isValidColorKey(colorRaw) ? colorRaw : null
   const kind: 'destination' | 'stop' | 'route' =
     kindRaw === 'stop' || kindRaw === 'route' ? kindRaw : 'destination'
   const direction: 'inbound' | 'outbound' | null =
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction, routes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction, routes, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
     args: [
       session.userId,
       kind,
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest) {
       kind === 'route' ? from_id : null,
       direction,
       routes,
+      color,
     ],
   })
   return NextResponse.json({ destination: result.rows[0] }, { status: 201 })

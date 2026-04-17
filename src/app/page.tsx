@@ -7,6 +7,7 @@ import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
 import type { SavedDestination } from '@/types/user'
+import { getSavedColor } from '@/lib/saved-colors'
 
 export const runtime = 'nodejs'
 
@@ -42,8 +43,10 @@ async function SavedSection() {
 }
 
 function stopHref(item: SavedDestination): string {
-  const base = `/live?stop=${encodeURIComponent(item.stop_id)}&name=${encodeURIComponent(item.stop_name)}`
-  return item.direction ? `${base}&dir=${item.direction}` : base
+  let url = `/live?stop=${encodeURIComponent(item.stop_id)}&name=${encodeURIComponent(item.stop_name)}`
+  if (item.direction) url += `&dir=${item.direction}`
+  if (item.routes) url += `&routes=${encodeURIComponent(item.routes)}`
+  return url
 }
 
 function routeHref(item: SavedDestination): string {
@@ -153,24 +156,33 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
             </Link>
           </div>
           <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1">
-            {stops.map((stop, i) => (
-              <Link
-                key={stop.id}
-                href={stopHref(stop)}
-                style={{ animationDelay: `${0.18 + i * 0.04}s` }}
-                className="animate-fade-in animate-stagger group shrink-0 w-44 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
-              >
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                  <Icon name="directions_bus" size={18} className="text-primary" filled />
-                </div>
-                <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
-                <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
-                  {stop.direction
-                    ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
-                    : 'Live arrivals'}
-                </p>
-              </Link>
-            ))}
+            {stops.map((stop, i) => {
+              const c = getSavedColor(stop.color)
+              const sub = stop.routes
+                ? `Routes ${stop.routes.split(',').join(', ')}`
+                : stop.direction
+                  ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
+                  : 'Live arrivals'
+              return (
+                <Link
+                  key={stop.id}
+                  href={stopHref(stop)}
+                  style={{ animationDelay: `${0.18 + i * 0.04}s` }}
+                  className="animate-fade-in animate-stagger group shrink-0 w-44 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
+                    style={{ backgroundColor: c.bg }}
+                  >
+                    <span style={{ color: c.fg }}>
+                      <Icon name="directions_bus" size={18} filled />
+                    </span>
+                  </div>
+                  <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
+                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5">{sub}</p>
+                </Link>
+              )
+            })}
           </div>
         </section>
       )}
@@ -186,15 +198,22 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
             </Link>
           </div>
           <div className="space-y-2">
-            {routes.map((route, i) => (
+            {routes.map((route, i) => {
+              const c = getSavedColor(route.color)
+              return (
               <Link
                 key={route.id}
                 href={routeHref(route)}
                 style={{ animationDelay: `${0.22 + i * 0.04}s` }}
                 className="animate-fade-in animate-stagger flex items-center gap-3 p-3 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
               >
-                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                  <Icon name="route" size={18} className="text-primary" />
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: c.bg }}
+                >
+                  <span style={{ color: c.fg }}>
+                    <Icon name="route" size={18} />
+                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-sm text-on-surface truncate">{route.label}</p>
@@ -206,7 +225,8 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
                 </div>
                 <Icon name="chevron_right" size={18} className="text-outline shrink-0" />
               </Link>
-            ))}
+              )
+            })}
           </div>
         </section>
       )}
