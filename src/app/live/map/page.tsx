@@ -56,6 +56,7 @@ function LiveMapInner() {
   const [count, setCount] = useState(0)
   const [error, setError] = useState(false)
   const [followMode, setFollowMode] = useState(false)
+  const [updatedAt, setUpdatedAt] = useState(0)
   const vehiclesRef = useRef<Map<string, LiveVehicle>>(new Map())
   const hasPannedRef = useRef(false)
   const selectedIdRef = useRef<string | null>(null)
@@ -318,6 +319,7 @@ function LiveMapInner() {
         vehiclesRef.current = new Map(shown.map((v) => [v.id, v]))
         setCount(shown.length)
         setError(false)
+        setUpdatedAt(Date.now())
         applyToMap(mapRef.current, shown)
 
         // Pan to first match once
@@ -384,18 +386,21 @@ function LiveMapInner() {
             <h1 className="font-headline font-bold text-xl text-primary">Live Map</h1>
           </div>
         </div>
-        <div className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
-          {error ? (
-            <>
-              <Icon name="error" size={14} className="text-red-600" />
-              <span className="text-red-600">offline</span>
-            </>
-          ) : (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              {count} {lineFilter ? 'matching' : 'buses'}
-            </>
-          )}
+        <div className="flex flex-col items-end">
+          <div className="text-xs font-semibold text-on-surface-variant flex items-center gap-1.5">
+            {error ? (
+              <>
+                <Icon name="error" size={14} className="text-red-600" />
+                <span className="text-red-600">offline</span>
+              </>
+            ) : (
+              <>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                {count} {lineFilter ? 'matching' : 'buses'}
+              </>
+            )}
+          </div>
+          <LastUpdated updatedAt={updatedAt} error={error} />
         </div>
       </header>
 
@@ -618,6 +623,19 @@ function operatorName(code: string): string {
     case 'UTS': return 'Ulsterbus Tours'
     default: return code || 'Translink'
   }
+}
+
+function LastUpdated({ updatedAt, error }: { updatedAt: number; error: boolean }) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  if (error || !updatedAt) return null
+  const secs = Math.max(0, Math.round((now - updatedAt) / 1000))
+  const label =
+    secs < 5 ? 'just now' : secs < 60 ? `${secs}s ago` : `${Math.round(secs / 60)}m ago`
+  return <span className="text-[10px] text-outline mt-0.5">Updated {label}</span>
 }
 
 function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void }) {

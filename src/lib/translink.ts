@@ -258,7 +258,19 @@ function mapJourney(j: EfaJourney, idx: number): Itinerary {
   }
 }
 
+// Fallback centre point (Belfast City Hall) used when the app couldn't
+// resolve the user's location — better than sending an unresolvable token.
+const FALLBACK_COORD = { lat: '54.5968', lon: '-5.9301' }
+
 function localityParams(value: string, suffix: 'origin' | 'destination') {
+  // 'current' means "use current geolocation" but geolocation wasn't
+  // available — fall back to Belfast centre so EFA returns something.
+  if (value === 'current' || value === 'Current Location') {
+    return {
+      [`type_${suffix}`]: 'coord',
+      [`name_${suffix}`]: `${FALLBACK_COORD.lon}:${FALLBACK_COORD.lat}:WGS84[DD.DDDDD]`,
+    }
+  }
   // Coordinate input: "lat,lon" (what the app sends from geolocation).
   // EFA coord format is "<lon>:<lat>:WGS84[DD.DDDDD]".
   const coordMatch = value.match(/^(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)$/)

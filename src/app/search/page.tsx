@@ -489,11 +489,38 @@ function SearchPageInner() {
     setToLocation(fromLocation)
   }
 
-  function handleFindJourneys() {
+  // When the user types a query but never picks from the dropdown, geocode
+  // it inline so the planner receives a real lat,lon. This matters because
+  // the EFA API doesn't reliably resolve free-text place names.
+  async function resolveLocation(
+    loc: SelectedLocation | null,
+    typed: string
+  ): Promise<SelectedLocation | null> {
+    if (loc) return loc
+    const trimmed = typed.trim()
+    if (!trimmed || trimmed === 'Current Location') return null
+    const controller = new AbortController()
+    const [photon, nominatim] = await Promise.all([
+      fetchPhoton(trimmed, controller.signal).catch(() => []),
+      fetchNominatim(trimmed, controller.signal).catch(() => []),
+    ])
+    const top = photon[0] ?? nominatim[0]
+    if (!top) return null
+    return { kind: 'address', name: top.displayName, lat: top.lat, lon: top.lon }
+  }
+
+  async function handleFindJourneys() {
     if (!toLocation && toQuery.trim().length < 2) return
 
+    const resolvedTo = await resolveLocation(toLocation, toQuery)
+    if (!resolvedTo && !toQuery.trim()) return
+    if (resolvedTo && !toLocation) {
+      setToLocation(resolvedTo)
+      setToQuery(resolvedTo.name)
+    }
+
     const from = locationToParams(fromLocation, fromQuery, 'Current Location')
-    const to = locationToParams(toLocation, toQuery, toQuery)
+    const to = locationToParams(resolvedTo ?? toLocation, toQuery, toQuery)
 
     if (!to.id || to.id === 'current') return
 
