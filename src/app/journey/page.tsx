@@ -29,15 +29,26 @@ function formatDuration(seconds: number) {
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`
 }
 
-async function getJourneys(params: {
-  from: string
-  to: string
-  date: string
-  time: string
-}): Promise<RankedItinerary[]> {
+async function getJourneys(
+  params: { from: string; to: string; date: string; time: string },
+  mode: 'leave_now' | 'leave_at'
+): Promise<RankedItinerary[]> {
   try {
     const data = await planJourney(params)
-    return rankItineraries(data.itineraries)
+    // For "Leave now" searches (and near-now "Leave at" ones), EFA can return
+    // itineraries whose first leg already departed. Strip those with a 1 min
+    // tolerance so the user never sees a bus that's already gone.
+    const cutoff = Date.now() - 60_000
+    const filtered = data.itineraries.filter((it) => {
+      if (!it.departure) return true
+      const dep = new Date(it.departure).getTime()
+      if (Number.isNaN(dep)) return true
+      // Only drop past departures for "now"-ish searches — a user planning
+      // tomorrow at 08:00 can legitimately see that as a past time now.
+      if (mode === 'leave_at') return true
+      return dep >= cutoff
+    })
+    return rankItineraries(filtered)
   } catch (err) {
     console.error('[journey] plan failed', err)
     return []
@@ -58,11 +69,12 @@ async function JourneyResults({ searchParams }: PageProps) {
   const to = sp.to ?? ''
   const date = sp.date ?? new Date().toISOString().split('T')[0]
   const time = sp.time ?? '09:00'
+  const mode: 'leave_now' | 'leave_at' = sp.mode === 'leave_at' ? 'leave_at' : 'leave_now'
 
   const fromOutsideNI = isCoordOutsideNI(from)
   const toOutsideNI = isCoordOutsideNI(to)
 
-  const journeys = await getJourneys({ from, to, date, time })
+  const journeys = await getJourneys({ from, to, date, time }, mode)
 
   const badgeColour = {
     Fastest: 'text-primary',
@@ -80,7 +92,7 @@ async function JourneyResults({ searchParams }: PageProps) {
     <div className="space-y-5">
       {journeys.map((journey, idx) => {
         const minsAway = minutesUntil(journey.departure)
-        const detailHref = `/journey/${journey.id}?from=${from}&fromName=${encodeURIComponent(sp.fromName ?? 'Current Location')}&to=${to}&toName=${encodeURIComponent(sp.toName ?? '')}&date=${date}&time=${time}&idx=${idx}`
+        const detailHref = `/journey/${journey.id}?from=${from}&fromName=${encodeURIComponent(sp.fromName ?? 'Current Location')}&to=${to}&toName=${encodeURIComponent(sp.toName ?? '')}&date=${date}&time=${time}&mode=${mode}&idx=${idx}`
 
         return (
           <Link

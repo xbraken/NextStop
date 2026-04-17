@@ -448,6 +448,19 @@ function SearchPageInner() {
     return `${String(timeHour).padStart(2, '0')}:${String(timeMinute).padStart(2, '0')}`
   }
 
+  // For "Leave now" we always send the real wall clock at click time —
+  // otherwise the picker state (set on mount) goes stale and EFA returns
+  // departures that have already left.
+  function getSearchDateTime() {
+    if (mode === 'leave_now') {
+      const now = new Date()
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+      return { date, time }
+    }
+    return { date: getDateString(), time: getTimeString() }
+  }
+
   // Build the id/name pair the journey planner needs. Prefer a picked
   // location's lat,lon, fall back to whatever text the user typed (the EFA
   // API can geocode names), and only use the 'current' token when neither
@@ -535,8 +548,9 @@ function SearchPageInner() {
       body: JSON.stringify({ from_label: from.name, from_id: from.id, to_label: to.name, to_id: to.id }),
     }).catch(() => {})
 
+    const { date, time } = getSearchDateTime()
     router.push(
-      `/journey?from=${encodeURIComponent(from.id)}&fromName=${encodeURIComponent(from.name)}&to=${encodeURIComponent(to.id)}&toName=${encodeURIComponent(to.name)}&date=${getDateString()}&time=${getTimeString()}&mode=${mode}`
+      `/journey?from=${encodeURIComponent(from.id)}&fromName=${encodeURIComponent(from.name)}&to=${encodeURIComponent(to.id)}&toName=${encodeURIComponent(to.name)}&date=${date}&time=${time}&mode=${mode}`
     )
   }
 

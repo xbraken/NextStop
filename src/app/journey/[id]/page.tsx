@@ -25,6 +25,7 @@ interface PageProps {
     toName?: string
     date?: string
     time?: string
+    mode?: string
     idx?: string
   }>
 }
@@ -126,6 +127,7 @@ async function JourneyDetail({
   date,
   time,
   idx,
+  mode,
   toName,
 }: {
   from: string
@@ -133,13 +135,21 @@ async function JourneyDetail({
   date: string
   time: string
   idx: number
+  mode: 'leave_now' | 'leave_at'
   toName: string
 }) {
   let journey: RankedItinerary | undefined
   if (to) {
     try {
       const data = await planJourney({ from, to, date, time })
-      const ranked = rankItineraries(data.itineraries)
+      const cutoff = Date.now() - 60_000
+      const fresh = data.itineraries.filter((it) => {
+        if (mode === 'leave_at') return true
+        if (!it.departure) return true
+        const dep = new Date(it.departure).getTime()
+        return Number.isNaN(dep) || dep >= cutoff
+      })
+      const ranked = rankItineraries(fresh)
       journey = ranked[idx]
     } catch (err) {
       console.error('[journey/[id]] plan failed', err)
@@ -240,6 +250,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
   const time = sp.time ?? '09:00'
   const idx = parseInt(sp.idx ?? id ?? '0', 10)
   const toName = sp.toName ?? ''
+  const mode: 'leave_now' | 'leave_at' = sp.mode === 'leave_at' ? 'leave_at' : 'leave_now'
 
   return (
     <>
@@ -266,6 +277,7 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
             date={date}
             time={time}
             idx={idx}
+            mode={mode}
             toName={toName}
           />
         </Suspense>
