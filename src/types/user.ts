@@ -5,6 +5,7 @@ export interface User {
 }
 
 export type SavedKind = 'destination' | 'stop' | 'route'
+export type StopDirection = 'inbound' | 'outbound'
 
 export interface SavedDestination {
   id: number
@@ -17,6 +18,7 @@ export interface SavedDestination {
   lng: number | null
   from_label: string | null
   from_id: string | null
+  direction: StopDirection | null
   created_at: string
 }
 

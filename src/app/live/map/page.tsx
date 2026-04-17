@@ -8,6 +8,8 @@ import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import type { LiveVehicle } from '@/app/api/translink/vehicles/route'
 import type { TranslinkStop, Departure } from '@/types/translink'
+import type { StopDirection } from '@/types/user'
+import { isInbound, matchesDirection } from '@/lib/direction'
 
 const POLL_MS = 15_000
 const STOP_POLL_MS = 20_000
@@ -16,8 +18,6 @@ const BELFAST: [number, number] = [-5.9301, 54.5968]
 const SOURCE_ID = 'vehicles'
 const USER_SOURCE_ID = 'user-location'
 const STOPS_SOURCE_ID = 'stops'
-
-const INBOUND_RE = /city centre|belfast|donegall|europa|central station|grand central|laganside/i
 
 const OPERATOR_COLORS: Record<string, { out: string; in: string }> = {
   TM:  { out: '#008080', in: '#004a4a' },
@@ -476,7 +476,7 @@ function applyToMap(map: maplibregl.Map | null, vehicles: LiveVehicle[]) {
   src.setData({
     type: 'FeatureCollection',
     features: vehicles.map((v) => {
-      const inbound = INBOUND_RE.test(v.destination)
+      const inbound = isInbound(v.destination)
       const props: Record<string, unknown> = {
         id: v.id,
         operator: v.operator,
@@ -630,6 +630,10 @@ function formatTime(iso: string): string {
 function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void }) {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
+  const [direction, setDirection] = useState<StopDirection | null>(null)
+
+  // Reset the filter when a different stop is opened
+  useEffect(() => { setDirection(null) }, [stop.stopId])
 
   useEffect(() => {
     let cancelled = false
@@ -657,7 +661,8 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
     }
   }, [stop.stopId])
 
-  const upcoming = (departures ?? []).slice(0, 6)
+  const filtered = (departures ?? []).filter((d) => matchesDirection(d.destination, direction))
+  const upcoming = filtered.slice(0, 6)
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-8 max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
@@ -680,6 +685,11 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
         </button>
       </div>
 
+      <div className="mt-4 flex items-center gap-2 flex-wrap">
+        <MiniDirectionToggle value={direction} onChange={setDirection} />
+        <StopSheetSaveButton stop={stop} direction={direction} />
+      </div>
+
       <div className="mt-4">
         {departures === null && !error && (
           <div className="space-y-2">
@@ -695,7 +705,9 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
 
         {departures && upcoming.length === 0 && !error && (
           <div className="text-sm text-on-surface-variant py-4">
-            No departures in the next couple of hours
+            {direction
+              ? `No ${direction} departures right now`
+              : 'No departures in the next couple of hours'}
           </div>
         )}
 
@@ -712,7 +724,7 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
 }
 
 function StopDepartureRow({ d }: { d: Departure }) {
-  const inbound = INBOUND_RE.test(d.destination)
+  const inbound = isInbound(d.destination)
   const mins = minutesUntil(d.expectedDeparture || d.scheduledDeparture)
   const isCancelled = d.status === 'Cancelled'
   const trackable = !!d.serviceId && !isCancelled
@@ -779,4 +791,128 @@ function StopDepartureRow({ d }: { d: Departure }) {
 function minutesUntil(iso: string): number {
   if (!iso) return 0
   return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000))
+}
+
+function MiniDirectionToggle({
+  value,
+  onChange,
+}: {
+  value: StopDirection | null
+  onChange: (v: StopDirection | null) => void
+}) {
+  const opts: { v: StopDirection | null; label: string }[] = [
+    { v: null, label: 'All' },
+    { v: 'inbound', label: 'Inward' },
+    { v: 'outbound', label: 'Outward' },
+  ]
+  return (
+    <div className="inline-flex rounded-full bg-surface-container p-0.5 text-[11px] font-semibold">
+      {opts.map((o) => {
+        const active = value === o.v
+        return (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => onChange(o.v)}
+            className={`px-3 py-1 rounded-full transition-colors ${
+              active
+                ? 'bg-primary text-on-primary'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'duplicate' | 'error' | 'unauth'
+
+function StopSheetSaveButton({
+  stop,
+  direction,
+}: {
+  stop: TranslinkStop
+  direction: StopDirection | null
+}) {
+  const [state, setState] = useState<SaveState>('idle')
+
+  // Reset whenever the stop or direction changes so the user can save again
+  useEffect(() => { setState('idle') }, [stop.stopId, direction])
+
+  async function save() {
+    setState('saving')
+    try {
+      const res = await fetch('/api/saved', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'stop',
+          label: stop.stopName,
+          stop_name: stop.stopName,
+          stop_id: stop.stopId,
+          lat: stop.lat,
+          lng: stop.lon,
+          direction,
+        }),
+      })
+      if (res.status === 401) { setState('unauth'); return }
+      if (res.status === 409) { setState('duplicate'); return }
+      if (!res.ok) { setState('error'); return }
+      setState('saved')
+    } catch {
+      setState('error')
+    }
+  }
+
+  if (state === 'unauth') {
+    return (
+      <Link
+        href="/profile"
+        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-surface-container text-[11px] font-semibold text-on-surface-variant active:scale-95"
+      >
+        <Icon name="login" size={12} />
+        Sign in to save
+      </Link>
+    )
+  }
+
+  const labelFor = (d: StopDirection | null) =>
+    d === 'inbound' ? 'Save inward' : d === 'outbound' ? 'Save outward' : 'Save stop'
+
+  const styles = {
+    idle: 'bg-primary text-on-primary',
+    saving: 'bg-primary/70 text-on-primary',
+    saved: 'bg-emerald-600 text-white',
+    duplicate: 'bg-surface-container text-on-surface-variant',
+    error: 'bg-red-600 text-white',
+    unauth: '',
+  }[state]
+
+  const text =
+    state === 'saving' ? 'Saving…'
+    : state === 'saved' ? 'Saved'
+    : state === 'duplicate' ? 'Already saved'
+    : state === 'error' ? 'Try again'
+    : labelFor(direction)
+
+  const icon =
+    state === 'saved' ? 'check'
+    : state === 'duplicate' ? 'bookmark_added'
+    : state === 'error' ? 'refresh'
+    : 'bookmark_add'
+
+  return (
+    <button
+      type="button"
+      onClick={save}
+      disabled={state === 'saving' || state === 'saved'}
+      className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold active:scale-95 transition-colors ${styles}`}
+    >
+      <Icon name={icon} size={12} filled={state === 'saved' || state === 'duplicate'} />
+      {text}
+    </button>
+  )
 }

@@ -5,10 +5,13 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
 import type { TranslinkStop, Departure } from '@/types/translink'
+import type { StopDirection } from '@/types/user'
+import { matchesDirection, parseDirection } from '@/lib/direction'
 
 const POLL_MS = 15_000
 
 type SelectedStop = { stopId: string; stopName: string }
+type DirFilter = StopDirection | null
 
 export default function LivePage() {
   return (
@@ -22,9 +25,18 @@ function LivePageInner() {
   const params = useSearchParams()
   const presetId = params.get('stop')
   const presetName = params.get('name')
+  const presetDir = parseDirection(params.get('dir'))
+
   const [stop, setStop] = useState<SelectedStop | null>(
     presetId ? { stopId: presetId, stopName: presetName ?? presetId } : null
   )
+  const [direction, setDirection] = useState<DirFilter>(presetDir)
+
+  // Reset the direction filter when the user picks a different stop
+  useEffect(() => {
+    setDirection(presetDir)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stop?.stopId])
 
   return (
     <>
@@ -46,10 +58,11 @@ function LivePageInner() {
         <StopPicker selected={stop} onSelect={setStop} onClear={() => setStop(null)} />
         {stop && (
           <>
-            <div className="mt-4">
-              <SaveStopButton stop={stop} />
+            <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+              <DirectionToggle value={direction} onChange={setDirection} />
+              <SaveStopButton stop={stop} direction={direction} />
             </div>
-            <DepartureBoard stop={stop} />
+            <DepartureBoard stop={stop} direction={direction} />
           </>
         )}
         {!stop && (
@@ -64,13 +77,48 @@ function LivePageInner() {
   )
 }
 
-function SaveStopButton({ stop }: { stop: SelectedStop }) {
+function DirectionToggle({
+  value,
+  onChange,
+}: {
+  value: DirFilter
+  onChange: (v: DirFilter) => void
+}) {
+  const opts: { label: string; value: DirFilter }[] = [
+    { label: 'All', value: null },
+    { label: 'Inbound', value: 'inbound' },
+    { label: 'Outbound', value: 'outbound' },
+  ]
+  return (
+    <div className="inline-flex p-1 bg-surface-container-low rounded-full text-xs font-semibold">
+      {opts.map((o) => {
+        const active = value === o.value
+        return (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => onChange(o.value)}
+            className={`px-3 py-1.5 rounded-full transition-colors ${
+              active
+                ? 'bg-primary text-on-primary shadow-sm'
+                : 'text-on-surface-variant hover:text-on-surface'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function SaveStopButton({ stop, direction }: { stop: SelectedStop; direction: DirFilter }) {
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'duplicate' | 'error'>('idle')
 
-  // Reset when the selected stop changes
+  // Reset when the stop OR direction changes (each direction variant is its own saved entry)
   useEffect(() => {
     setState('idle')
-  }, [stop.stopId])
+  }, [stop.stopId, direction])
 
   async function save() {
     setState('saving')
@@ -82,6 +130,7 @@ function SaveStopButton({ stop }: { stop: SelectedStop }) {
         label: stop.stopName,
         stop_name: stop.stopName,
         stop_id: stop.stopId,
+        direction,
       }),
     })
     if (res.status === 401) return setState('error')
@@ -90,13 +139,18 @@ function SaveStopButton({ stop }: { stop: SelectedStop }) {
     setState('saved')
   }
 
+  const defaultText =
+    direction === 'inbound' ? 'Save inbound' :
+    direction === 'outbound' ? 'Save outbound' :
+    'Save this stop'
+
   const { icon, text, disabled } = (() => {
     switch (state) {
       case 'saving': return { icon: 'hourglass_empty', text: 'Saving…', disabled: true }
       case 'saved': return { icon: 'check_circle', text: 'Saved', disabled: true }
       case 'duplicate': return { icon: 'bookmark', text: 'Already saved', disabled: true }
       case 'error': return { icon: 'error', text: 'Sign in to save', disabled: true }
-      default: return { icon: 'bookmark_add', text: 'Save this stop', disabled: false }
+      default: return { icon: 'bookmark_add', text: defaultText, disabled: false }
     }
   })()
 
@@ -218,7 +272,7 @@ function StopPicker({
 
 // ---------------- Departure board ----------------
 
-function DepartureBoard({ stop }: { stop: SelectedStop }) {
+function DepartureBoard({ stop, direction }: { stop: SelectedStop; direction: DirFilter }) {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
   const [updatedAt, setUpdatedAt] = useState<number>(0)
@@ -251,6 +305,10 @@ function DepartureBoard({ stop }: { stop: SelectedStop }) {
     }
   }, [stop.stopId])
 
+  const filtered = (departures ?? []).filter((d) => matchesDirection(d.destination, direction))
+  const filteredEmpty = departures !== null && filtered.length === 0
+  const totalLoaded = (departures ?? []).length
+
   return (
     <section className="mt-6">
       <div className="flex items-center justify-between mb-4">
@@ -266,15 +324,21 @@ function DepartureBoard({ stop }: { stop: SelectedStop }) {
         </div>
       )}
 
-      {departures && departures.length === 0 && (
+      {filteredEmpty && (
         <div className="text-center py-10 text-on-surface-variant">
-          <p className="font-medium">No departures in the next couple of hours</p>
+          {totalLoaded === 0 ? (
+            <p className="font-medium">No departures in the next couple of hours</p>
+          ) : (
+            <p className="font-medium">
+              No {direction} departures right now — {totalLoaded} going the other way
+            </p>
+          )}
         </div>
       )}
 
-      {departures && departures.length > 0 && (
+      {filtered.length > 0 && (
         <div className="space-y-3">
-          {departures.map((d, i) => (
+          {filtered.map((d, i) => (
             <DepartureCard key={`${d.serviceId}-${d.scheduledDeparture}-${i}`} d={d} />
           ))}
         </div>

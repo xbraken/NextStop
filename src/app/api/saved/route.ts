@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { InArgs } from '@libsql/client'
 import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
@@ -23,9 +24,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id } = body ?? {}
+  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw } = body ?? {}
   const kind: 'destination' | 'stop' | 'route' =
     kindRaw === 'stop' || kindRaw === 'route' ? kindRaw : 'destination'
+  const direction: 'inbound' | 'outbound' | null =
+    kind === 'stop' && (dirRaw === 'inbound' || dirRaw === 'outbound') ? dirRaw : null
 
   if (!label || !stop_id) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -34,16 +37,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Routes need from_id and from_label' }, { status: 400 })
   }
 
-  // Dedup by (kind, identifying fields). Destinations/stops dedupe on stop_id;
-  // routes on the (from_id, stop_id) pair so the same leg isn't saved twice.
-  const dedupSql =
-    kind === 'route'
-      ? 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND from_id = ? AND stop_id = ?'
-      : 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ?'
-  const dedupArgs =
-    kind === 'route'
-      ? [session.userId, kind, from_id, stop_id]
-      : [session.userId, kind, stop_id]
+  // Dedup by (kind, identifying fields). Routes dedupe on (from_id, stop_id);
+  // stops dedupe on (stop_id, direction) so the same stop can be saved once
+  // per direction preference; destinations dedupe on stop_id.
+  let dedupSql: string
+  let dedupArgs: InArgs
+  if (kind === 'route') {
+    dedupSql = 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND from_id = ? AND stop_id = ?'
+    dedupArgs = [session.userId, kind, from_id, stop_id]
+  } else if (kind === 'stop') {
+    dedupSql =
+      'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ? AND (direction IS ? OR direction = ?)'
+    dedupArgs = [session.userId, kind, stop_id, direction, direction]
+  } else {
+    dedupSql = 'SELECT id FROM saved_destinations WHERE user_id = ? AND kind = ? AND stop_id = ?'
+    dedupArgs = [session.userId, kind, stop_id]
+  }
 
   const existing = await db.execute({ sql: dedupSql, args: dedupArgs })
   if (existing.rows.length > 0) {
@@ -51,7 +60,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
     args: [
       session.userId,
       kind,
@@ -62,6 +71,7 @@ export async function POST(req: NextRequest) {
       lng ?? null,
       kind === 'route' ? from_label : null,
       kind === 'route' ? from_id : null,
+      direction,
     ],
   })
   return NextResponse.json({ destination: result.rows[0] }, { status: 201 })

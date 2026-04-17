@@ -30,6 +30,7 @@ export async function migrate() {
     "ALTER TABLE saved_destinations ADD COLUMN kind TEXT NOT NULL DEFAULT 'destination'",
     "ALTER TABLE saved_destinations ADD COLUMN from_label TEXT",
     "ALTER TABLE saved_destinations ADD COLUMN from_id TEXT",
+    "ALTER TABLE saved_destinations ADD COLUMN direction TEXT",
   ]) {
     try { await db.execute(sql) } catch { /* column already exists */ }
   }
@@ -53,6 +54,7 @@ export async function migrate() {
       lng REAL,
       from_label TEXT,
       from_id TEXT,
+      direction TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 

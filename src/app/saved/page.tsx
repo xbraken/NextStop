@@ -22,8 +22,12 @@ function iconFor(kind: SavedKind, label: string, stopId: string): string {
 
 function hrefFor(item: SavedDestination): string {
   switch (item.kind) {
-    case 'stop':
-      return `/live?stop=${encodeURIComponent(item.stop_id)}&name=${encodeURIComponent(item.stop_name)}`
+    case 'stop': {
+      const base =
+        `/live?stop=${encodeURIComponent(item.stop_id)}` +
+        `&name=${encodeURIComponent(item.stop_name)}`
+      return item.direction ? `${base}&dir=${item.direction}` : base
+    }
     case 'route':
       return (
         `/journey?from=${encodeURIComponent(item.from_id ?? 'current')}` +
@@ -34,6 +38,17 @@ function hrefFor(item: SavedDestination): string {
     default:
       return `/search?to=${encodeURIComponent(item.stop_id)}&toName=${encodeURIComponent(item.label)}`
   }
+}
+
+function subtitle(item: SavedDestination): string {
+  if (item.kind === 'route') {
+    return `${item.from_label ?? 'Current Location'} → ${item.stop_name}`
+  }
+  if (item.kind === 'stop' && item.direction) {
+    const arrow = item.direction === 'inbound' ? '↓' : '↑'
+    return `${arrow} ${item.direction} · ${item.stop_name}`
+  }
+  return item.stop_name
 }
 
 function Section({
@@ -86,11 +101,7 @@ function Section({
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-on-surface truncate">{item.label}</p>
-                <p className="text-sm text-on-surface-variant truncate">
-                  {item.kind === 'route'
-                    ? `${item.from_label ?? 'Current Location'} → ${item.stop_name}`
-                    : item.stop_name}
-                </p>
+                <p className="text-sm text-on-surface-variant truncate">{subtitle(item)}</p>
               </div>
             </Link>
             <SavedActions destId={item.id} />
