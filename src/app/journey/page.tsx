@@ -4,7 +4,7 @@ import Icon from '@/components/ui/Icon'
 import LegVisualiser from '@/components/journey/LegVisualiser'
 import SaveRouteButton from './SaveRouteButton'
 import { planJourney, rankItineraries } from '@/lib/translink'
-import { minutesUntil } from '@/lib/time'
+import { formatTime, minutesUntil } from '@/lib/time'
 import type { RankedItinerary } from '@/types/translink'
 
 export const runtime = 'nodejs'
@@ -98,8 +98,11 @@ async function JourneyResults({ searchParams }: PageProps) {
                 <div className="text-2xl font-headline font-extrabold text-on-surface">
                   {formatDuration(journey.duration)}
                 </div>
-                <div className="text-xs font-semibold text-outline uppercase tracking-tighter">
-                  in {minsAway} min{minsAway !== 1 ? 's' : ''}
+                <div className="text-xs font-semibold text-on-surface-variant mt-0.5">
+                  {formatTime(journey.departure)} → {formatTime(journey.arrival)}
+                </div>
+                <div className="text-[10px] font-semibold text-outline uppercase tracking-tighter mt-0.5">
+                  Leaves in {minsAway} min{minsAway !== 1 ? 's' : ''}
                 </div>
               </div>
             </div>

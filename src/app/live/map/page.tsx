@@ -11,6 +11,7 @@ import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { isInbound, matchesDirection } from '@/lib/direction'
 import { formatTime, minutesUntil } from '@/lib/time'
+import { variantFor } from '@/lib/departure'
 
 const POLL_MS = 15_000
 const STOP_POLL_MS = 20_000
@@ -541,7 +542,7 @@ function VehicleSheet({
   const late = delayMin >= 2
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-10 animate-in slide-in-from-bottom duration-200">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-28 animate-in slide-in-from-bottom duration-200">
       <div className="flex items-start gap-4">
         <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
           <span className="font-headline font-extrabold text-primary text-lg">
@@ -623,9 +624,16 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
   const [direction, setDirection] = useState<StopDirection | null>(null)
+  const [, setTick] = useState(0)
 
   // Reset the filter when a different stop is opened
   useEffect(() => { setDirection(null) }, [stop.stopId])
+
+  // Re-render every 15s so "min" countdowns visibly tick down between API polls.
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 15_000)
+    return () => clearInterval(id)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -657,7 +665,7 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
   const upcoming = filtered.slice(0, 6)
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-8 max-h-[70vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-28 max-h-[75vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center flex-shrink-0">
           <Icon name="pin_drop" size={22} className="text-on-surface-variant" filled />
@@ -721,6 +729,7 @@ function StopDepartureRow({ d }: { d: Departure }) {
   const isCancelled = d.status === 'Cancelled'
   const trackable = !!d.serviceId && !isCancelled
   const href = `/live/map?line=${encodeURIComponent(d.serviceId)}&dest=${encodeURIComponent(d.destination)}`
+  const variant = variantFor(d)
 
   const content = (
     <>
@@ -731,7 +740,7 @@ function StopDepartureRow({ d }: { d: Departure }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium truncate text-sm">{d.destination || 'Unknown'}</p>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
           <span
             className={`inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider ${
               inbound ? 'text-primary' : 'text-on-surface-variant'
@@ -740,16 +749,10 @@ function StopDepartureRow({ d }: { d: Departure }) {
             <Icon name={inbound ? 'south_west' : 'north_east'} size={11} />
             {inbound ? 'Inward' : 'Outward'}
           </span>
-          {!d.isLive && (
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-outline">
-              Timetable
-            </span>
-          )}
-          {isCancelled && (
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-red-600">
-              Cancelled
-            </span>
-          )}
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${variant.className}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${variant.dot}`} />
+            {variant.label}
+          </span>
         </div>
       </div>
       <div className="text-right flex-shrink-0">
@@ -759,6 +762,11 @@ function StopDepartureRow({ d }: { d: Departure }) {
         {!isCancelled && mins > 0 && (
           <div className="text-[10px] font-semibold uppercase tracking-wider text-outline">
             min
+          </div>
+        )}
+        {!isCancelled && d.scheduledDeparture && (
+          <div className="text-[10px] font-semibold text-outline mt-1">
+            {formatTime(d.expectedDeparture || d.scheduledDeparture)}
           </div>
         )}
       </div>

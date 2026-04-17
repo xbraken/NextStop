@@ -8,6 +8,7 @@ import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { matchesDirection, parseDirection } from '@/lib/direction'
 import { minutesUntil } from '@/lib/time'
+import { variantFor } from '@/lib/departure'
 
 const POLL_MS = 15_000
 
@@ -427,42 +428,4 @@ function DepartureCard({ d }: { d: Departure }) {
   return <div className={baseClass}>{content}</div>
 }
 
-function variantFor(d: Departure) {
-  if (d.status === 'Cancelled') {
-    return {
-      label: 'Cancelled',
-      className: 'text-red-600',
-      dot: 'bg-red-500',
-    }
-  }
-  if (!d.isLive) {
-    return {
-      label: 'Timetable only',
-      className: 'text-outline',
-      dot: 'bg-outline',
-    }
-  }
-  const driftMin = Math.round(
-    (new Date(d.expectedDeparture).getTime() - new Date(d.scheduledDeparture).getTime()) / 60_000
-  )
-  if (driftMin >= 2) {
-    return {
-      label: `Live · ${driftMin} min late`,
-      className: 'text-amber-600',
-      dot: 'bg-amber-500',
-    }
-  }
-  if (driftMin <= -1) {
-    return {
-      label: `Live · ${Math.abs(driftMin)} min early`,
-      className: 'text-amber-600',
-      dot: 'bg-amber-500',
-    }
-  }
-  return {
-    label: 'Live · on time',
-    className: 'text-emerald-600',
-    dot: 'bg-emerald-500',
-  }
-}
 
