@@ -30,11 +30,22 @@ function headers() {
   return { 'X-API-TOKEN': token }
 }
 
-async function efaGet<T = unknown>(path: string, params: Record<string, string>): Promise<T> {
+async function efaGet<T = unknown>(
+  path: string,
+  params: Record<string, string>,
+  cacheOpts: { revalidate?: number } = {}
+): Promise<T> {
   const qs = new URLSearchParams(params).toString()
   const url = `${BASE}/${path}?${qs}`
   console.log('[efa]', path, qs)
-  const res = await fetch(url, { headers: headers(), cache: 'no-store' })
+  // Default to no-store for time-sensitive endpoints (departures, journeys).
+  // Stop search and reverse-coord lookups override with a revalidate window
+  // since the underlying data barely changes.
+  const init: RequestInit & { next?: { revalidate: number } } =
+    cacheOpts.revalidate !== undefined
+      ? { headers: headers(), next: { revalidate: cacheOpts.revalidate } }
+      : { headers: headers(), cache: 'no-store' }
+  const res = await fetch(url, init)
   const text = await res.text()
   if (!res.ok) {
     console.error('[efa] non-ok', path, res.status, text.slice(0, 200))
@@ -79,11 +90,11 @@ function mapLocation(loc: EfaLocation): TranslinkStop | null {
 export async function searchStops(query: string): Promise<StopsResponse> {
   if (isMock()) return { stops: mockSearchStops(query) }
 
-  const data = await efaGet<{ locations?: EfaLocation[] }>('XML_STOPFINDER_REQUEST', {
-    ext_macro: 'sf',
-    type_sf: 'any',
-    name_sf: query,
-  })
+  const data = await efaGet<{ locations?: EfaLocation[] }>(
+    'XML_STOPFINDER_REQUEST',
+    { ext_macro: 'sf', type_sf: 'any', name_sf: query },
+    { revalidate: 3600 } // stop names change rarely
+  )
   const stops = (data.locations ?? [])
     .map(mapLocation)
     .filter((s): s is TranslinkStop => s !== null)
@@ -102,14 +113,18 @@ export async function searchStopsNear(
     return { stops }
   }
 
-  const data = await efaGet<{ locations?: EfaLocation[] }>('XML_COORD_REQUEST', {
-    ext_macro: 'coord',
-    coord: `${lon}:${lat}:WGS84[DD.DDDDD]`,
-    inclFilter: '1',
-    type_1: 'STOP',
-    radius_1: String(radius),
-    max: '80',
-  })
+  const data = await efaGet<{ locations?: EfaLocation[] }>(
+    'XML_COORD_REQUEST',
+    {
+      ext_macro: 'coord',
+      coord: `${lon}:${lat}:WGS84[DD.DDDDD]`,
+      inclFilter: '1',
+      type_1: 'STOP',
+      radius_1: String(radius),
+      max: '80',
+    },
+    { revalidate: 600 } // nearby stops at a coord rarely change
+  )
   const stops = (data.locations ?? [])
     .map(mapLocation)
     .filter((s): s is TranslinkStop => s !== null)

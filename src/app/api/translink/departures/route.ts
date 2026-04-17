@@ -10,5 +10,11 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await getDepartures(stopId)
-  return NextResponse.json(data)
+  return NextResponse.json(data, {
+    headers: {
+      // Departures are updated upstream every ~30s. A 10s public cache lets
+      // burst polls (multiple tabs / quick re-mounts) hit the CDN.
+      'Cache-Control': 'public, max-age=10, stale-while-revalidate=30',
+    },
+  })
 }

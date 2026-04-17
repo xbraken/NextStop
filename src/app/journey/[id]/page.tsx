@@ -1,9 +1,18 @@
+import { Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import type { RankedItinerary, JourneyLeg } from '@/types/translink'
 import { planJourney, rankItineraries } from '@/lib/translink'
 import { formatTime, minutesUntil } from '@/lib/time'
-import JourneyMap from './JourneyMap'
+
+// Maplibre is ~250KB. Loading it lazily lets the timeline text appear first
+// and the map fades in once its chunk arrives.
+const JourneyMap = dynamic(() => import('./JourneyMap'), {
+  loading: () => (
+    <div className="w-full h-64 rounded-2xl bg-surface-container animate-pulse" />
+  ),
+})
 
 export const runtime = 'nodejs'
 
@@ -109,15 +118,23 @@ function ArriveRow({ leg }: { leg: JourneyLeg }) {
   )
 }
 
-export default async function JourneyDetailPage({ params, searchParams }: PageProps) {
-  const [{ id }, sp] = await Promise.all([params, searchParams])
-
-  const from = sp.from ?? 'current'
-  const to = sp.to ?? ''
-  const date = sp.date ?? new Date().toISOString().split('T')[0]
-  const time = sp.time ?? '09:00'
-  const idx = parseInt(sp.idx ?? id ?? '0', 10)
-
+// Resolved-content section — runs inside Suspense so the page shell can paint
+// before the EFA call returns.
+async function JourneyDetail({
+  from,
+  to,
+  date,
+  time,
+  idx,
+  toName,
+}: {
+  from: string
+  to: string
+  date: string
+  time: string
+  idx: number
+  toName: string
+}) {
   let journey: RankedItinerary | undefined
   if (to) {
     try {
@@ -131,9 +148,9 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
 
   if (!journey || !journey.legs || journey.legs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <p className="text-on-surface-variant">Journey not found.</p>
-        <Link href="/search" className="mt-4 text-primary font-bold">
+      <div className="text-center py-20 text-on-surface-variant">
+        <p>Journey not found.</p>
+        <Link href="/search" className="mt-4 inline-block text-primary font-bold">
           Search again
         </Link>
       </div>
@@ -146,11 +163,90 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
 
   return (
     <>
-      {/* Header */}
+      {/* Hero */}
+      <section className="mb-10 animate-fade-in-up">
+        <div className="flex items-baseline justify-between mb-1">
+          <h2 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface">
+            {lastLeg.to.name || toName}
+          </h2>
+          <span className="text-lg font-headline font-bold text-primary">{totalMins} mins</span>
+        </div>
+        <p className="text-on-surface-variant font-medium">
+          {firstBusLeg ? `Via ${firstBusLeg.routeId}` : 'Walking route'}
+        </p>
+      </section>
+
+      {/* Map */}
+      <section className="mb-10 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
+        <JourneyMap legs={journey.legs} />
+      </section>
+
+      {/* Timeline */}
+      <div className="relative">
+        <div className="absolute left-[23px] top-6 bottom-6 w-1 bg-primary/10 rounded-full" />
+        <div className="absolute left-[23px] top-6 w-1 bg-primary rounded-full animate-grow-progress" />
+
+        {journey.legs.map((leg, i) => {
+          const isLast = i === journey.legs.length - 1
+          return (
+            <div
+              key={i}
+              className="animate-fade-in-up animate-stagger"
+              style={{ animationDelay: `${i * 0.1}s` }}
+            >
+              {isLast ? <ArriveRow leg={leg} /> : <LegRow leg={leg} />}
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
+}
+
+function JourneyDetailSkeleton({ toName }: { toName: string }) {
+  return (
+    <>
+      <section className="mb-10">
+        <div className="flex items-baseline justify-between mb-1">
+          <h2 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface">
+            {toName || 'Loading…'}
+          </h2>
+          <div className="h-6 w-16 bg-surface-container rounded animate-pulse" />
+        </div>
+        <div className="h-4 w-32 bg-surface-container rounded animate-pulse mt-2" />
+      </section>
+      <div className="h-64 w-full rounded-2xl bg-surface-container animate-pulse mb-10" />
+      <div className="space-y-6">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex gap-5">
+            <div className="w-12 h-12 rounded-full bg-surface-container animate-pulse" />
+            <div className="flex-1 space-y-2">
+              <div className="h-5 w-2/3 bg-surface-container rounded animate-pulse" />
+              <div className="h-4 w-1/3 bg-surface-container rounded animate-pulse" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
+export default async function JourneyDetailPage({ params, searchParams }: PageProps) {
+  const [{ id }, sp] = await Promise.all([params, searchParams])
+
+  const from = sp.from ?? 'current'
+  const to = sp.to ?? ''
+  const date = sp.date ?? new Date().toISOString().split('T')[0]
+  const time = sp.time ?? '09:00'
+  const idx = parseInt(sp.idx ?? id ?? '0', 10)
+  const toName = sp.toName ?? ''
+
+  return (
+    <>
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-4">
           <Link
-            href={`/journey?from=${from}&fromName=${encodeURIComponent(sp.fromName ?? '')}&to=${to}&toName=${encodeURIComponent(sp.toName ?? '')}&date=${date}&time=${time}`}
+            href={`/journey?from=${from}&fromName=${encodeURIComponent(sp.fromName ?? '')}&to=${to}&toName=${encodeURIComponent(toName)}&date=${date}&time=${time}`}
             className="p-2 -ml-2 rounded-full hover:bg-surface-container transition-colors active:scale-95 text-primary"
           >
             <Icon name="arrow_back" size={22} />
@@ -163,44 +259,16 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
       </header>
 
       <main className="pt-24 pb-40 px-6 max-w-2xl mx-auto">
-        {/* Hero */}
-        <section className="mb-10 animate-fade-in-up">
-          <div className="flex items-baseline justify-between mb-1">
-            <h2 className="text-4xl font-headline font-extrabold tracking-tight text-on-surface">
-              {lastLeg.to.name}
-            </h2>
-            <span className="text-lg font-headline font-bold text-primary">{totalMins} mins</span>
-          </div>
-          <p className="text-on-surface-variant font-medium">
-            {firstBusLeg ? `Via ${firstBusLeg.routeId}` : 'Walking route'}
-          </p>
-        </section>
-
-        {/* Map */}
-        <section className="mb-10 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
-          <JourneyMap legs={journey.legs} />
-        </section>
-
-        {/* Timeline */}
-        <div className="relative">
-          {/* Progress track */}
-          <div className="absolute left-[23px] top-6 bottom-6 w-1 bg-primary/10 rounded-full" />
-          {/* Animated fill */}
-          <div className="absolute left-[23px] top-6 w-1 bg-primary rounded-full animate-grow-progress" />
-
-          {journey.legs.map((leg, i) => {
-            const isLast = i === journey.legs.length - 1
-            return (
-              <div
-                key={i}
-                className="animate-fade-in-up animate-stagger"
-                style={{ animationDelay: `${i * 0.1}s` }}
-              >
-                {isLast ? <ArriveRow leg={leg} /> : <LegRow leg={leg} />}
-              </div>
-            )
-          })}
-        </div>
+        <Suspense fallback={<JourneyDetailSkeleton toName={toName} />}>
+          <JourneyDetail
+            from={from}
+            to={to}
+            date={date}
+            time={time}
+            idx={idx}
+            toName={toName}
+          />
+        </Suspense>
       </main>
 
       {/* Bottom action */}

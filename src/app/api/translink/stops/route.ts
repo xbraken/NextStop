@@ -10,5 +10,11 @@ export async function GET(req: NextRequest) {
   }
 
   const data = await searchStops(q)
-  return NextResponse.json(data)
+  return NextResponse.json(data, {
+    headers: {
+      // Stops change rarely — cache aggressively in the browser, allow CDN
+      // revalidation in the background so search-as-you-type stays snappy.
+      'Cache-Control': 'public, max-age=600, stale-while-revalidate=86400',
+    },
+  })
 }

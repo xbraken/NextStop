@@ -284,9 +284,7 @@ function DepartureBoard({ stop, direction }: { stop: SelectedStop; direction: Di
 
     async function load() {
       try {
-        const res = await fetch(`/api/translink/departures?stopId=${encodeURIComponent(stop.stopId)}`, {
-          cache: 'no-store',
-        })
+        const res = await fetch(`/api/translink/departures?stopId=${encodeURIComponent(stop.stopId)}`)
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json()
         if (cancelled) return
