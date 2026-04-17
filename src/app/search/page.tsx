@@ -444,9 +444,21 @@ function SearchPageInner() {
     return `${String(timeHour).padStart(2, '0')}:${String(timeMinute).padStart(2, '0')}`
   }
 
-  function locationToParams(loc: SelectedLocation | null, fallbackName: string) {
-    if (!loc) return { id: 'current', name: fallbackName }
-    return { id: `${loc.lat},${loc.lon}`, name: loc.name }
+  // Build the id/name pair the journey planner needs. Prefer a picked
+  // location's lat,lon, fall back to whatever text the user typed (the EFA
+  // API can geocode names), and only use the 'current' token when neither
+  // exists — that special value signals "use current geolocation".
+  function locationToParams(
+    loc: SelectedLocation | null,
+    typed: string,
+    fallbackName: string
+  ) {
+    if (loc) return { id: `${loc.lat},${loc.lon}`, name: loc.name }
+    const trimmed = typed.trim()
+    if (trimmed && trimmed !== 'Current Location') {
+      return { id: trimmed, name: trimmed }
+    }
+    return { id: 'current', name: fallbackName }
   }
 
   async function handleSaveDestination() {
@@ -478,10 +490,10 @@ function SearchPageInner() {
   }
 
   function handleFindJourneys() {
-    if (!toLocation && !toQuery) return
+    if (!toLocation && toQuery.trim().length < 2) return
 
-    const from = locationToParams(fromLocation, 'Current Location')
-    const to = locationToParams(toLocation, toQuery)
+    const from = locationToParams(fromLocation, fromQuery, 'Current Location')
+    const to = locationToParams(toLocation, toQuery, toQuery)
 
     if (!to.id || to.id === 'current') return
 
