@@ -4,7 +4,6 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
-import type { TranslinkStop } from '@/types/translink'
 import type { PhotonResult } from '@/lib/photon'
 import { Suspense } from 'react'
 
@@ -12,33 +11,48 @@ import { Suspense } from 'react'
 const photonCache = new Map<string, PhotonResult[]>()
 const nominatimCache = new Map<string, PhotonResult[]>()
 
-// Location bias centred on Belfast — softer than bbox (doesn't hard-exclude results)
-const BELFAST_LAT = 54.5973
-const BELFAST_LON = -5.9301
+// Northern Ireland bounding box — west,south,east,north.
+// Used as a hard filter so geocoders never return results from GB or Ireland.
+const NI_WEST = -8.2
+const NI_SOUTH = 54.0
+const NI_EAST = -5.4
+const NI_NORTH = 55.3
+
+function inNI(lat: number, lon: number): boolean {
+  return lat >= NI_SOUTH && lat <= NI_NORTH && lon >= NI_WEST && lon <= NI_EAST
+}
 
 async function fetchPhoton(q: string, signal: AbortSignal): Promise<PhotonResult[]> {
   const cached = photonCache.get(q)
   if (cached) return cached
 
-  // Use location bias instead of strict bbox so residential streets aren't excluded
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=en&lat=${BELFAST_LAT}&lon=${BELFAST_LON}&location_bias_scale=0.5`
+  // bbox biases Photon's ranking; we still filter client-side since Photon
+  // can leak results just outside the box.
+  const bbox = `${NI_WEST},${NI_SOUTH},${NI_EAST},${NI_NORTH}`
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=8&lang=en&bbox=${bbox}`
   const res = await fetch(url, { signal })
   if (!res.ok) return []
 
   const data = await res.json()
-  const results: PhotonResult[] = (data.features ?? []).map((f: {
-    geometry: { coordinates: [number, number] }
-    properties: { name?: string; street?: string; housenumber?: string; city?: string; county?: string; postcode?: string }
-  }) => {
-    const p = f.properties
-    const [lon, lat] = f.geometry.coordinates
-    const parts = [
-      p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.name ?? p.street),
-      p.city ?? p.county,
-    ].filter(Boolean)
-    const displayName = parts.join(', ') || p.name || 'Unknown'
-    return { type: 'address' as const, name: displayName, street: p.street, city: p.city ?? p.county, postcode: p.postcode, lat, lon, displayName }
-  })
+  const results: PhotonResult[] = (data.features ?? [])
+    .filter((f: { geometry?: { coordinates?: [number, number] } }) => {
+      const c = f.geometry?.coordinates
+      return c && inNI(c[1], c[0])
+    })
+    .map((f: {
+      geometry: { coordinates: [number, number] }
+      properties: { name?: string; street?: string; housenumber?: string; city?: string; county?: string; postcode?: string; countrycode?: string }
+    }) => {
+      const p = f.properties
+      const [lon, lat] = f.geometry.coordinates
+      const parts = [
+        p.housenumber && p.street ? `${p.housenumber} ${p.street}` : (p.name ?? p.street),
+        p.city ?? p.county,
+      ].filter(Boolean)
+      const displayName = parts.join(', ') || p.name || 'Unknown'
+      return { type: 'address' as const, name: displayName, street: p.street, city: p.city ?? p.county, postcode: p.postcode, lat, lon, displayName }
+    })
+    .slice(0, 5)
 
   photonCache.set(q, results)
   return results
@@ -49,7 +63,10 @@ async function fetchNominatim(q: string, signal: AbortSignal): Promise<PhotonRes
   const cached = nominatimCache.get(q)
   if (cached) return cached
 
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', Northern Ireland')}&format=json&limit=3&countrycodes=gb&addressdetails=1`
+  // bounded=1 makes the viewbox a hard limit instead of a hint, so results
+  // outside Northern Ireland are excluded.
+  const viewbox = `${NI_WEST},${NI_NORTH},${NI_EAST},${NI_SOUTH}`
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ', Northern Ireland')}&format=json&limit=5&countrycodes=gb&addressdetails=1&viewbox=${viewbox}&bounded=1`
   const res = await fetch(url, {
     signal,
     headers: { 'Accept-Language': 'en', 'User-Agent': 'NextStop/1.0' },
@@ -60,40 +77,33 @@ async function fetchNominatim(q: string, signal: AbortSignal): Promise<PhotonRes
   const results: PhotonResult[] = (data as Array<{
     lat: string; lon: string; display_name: string
     address?: { road?: string; house_number?: string; city?: string; town?: string; village?: string; county?: string }
-  }>).map((item) => {
-    const addr = item.address ?? {}
-    const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? 'Northern Ireland'
-    const street = addr.house_number && addr.road ? `${addr.house_number} ${addr.road}` : addr.road
-    const name = street ? `${street}, ${city}` : item.display_name.split(',').slice(0, 2).join(',').trim()
-    return {
-      type: 'address' as const,
-      name,
-      displayName: name,
-      street: addr.road,
-      city,
-      lat: parseFloat(item.lat),
-      lon: parseFloat(item.lon),
-    }
-  })
+  }>)
+    .map((item) => {
+      const addr = item.address ?? {}
+      const city = addr.city ?? addr.town ?? addr.village ?? addr.county ?? 'Northern Ireland'
+      const street = addr.house_number && addr.road ? `${addr.house_number} ${addr.road}` : addr.road
+      const name = street ? `${street}, ${city}` : item.display_name.split(',').slice(0, 2).join(',').trim()
+      return {
+        type: 'address' as const,
+        name,
+        displayName: name,
+        street: addr.road,
+        city,
+        lat: parseFloat(item.lat),
+        lon: parseFloat(item.lon),
+      }
+    })
+    .filter((r) => inNI(r.lat, r.lon))
 
   nominatimCache.set(q, results)
   return results
 }
 
-async function fetchStops(q: string, signal: AbortSignal): Promise<TranslinkStop[]> {
-  const res = await fetch(`/api/translink/stops?q=${encodeURIComponent(q)}`, { signal })
-  if (!res.ok) return []
-  const data = await res.json()
-  return data.stops ?? []
-}
-
-// A selected location can be either a Translink stop or an address
-type SelectedLocation =
-  | { kind: 'stop'; stopId: string; name: string; lat: number; lon: number }
-  | { kind: 'address'; name: string; lat: number; lon: number }
+// A selected location is always an address/place — bus stops are handled
+// from the live page, not from the journey search.
+type SelectedLocation = { kind: 'address'; name: string; lat: number; lon: number }
 
 interface SearchResults {
-  stops: TranslinkStop[]
   places: PhotonResult[]
 }
 
@@ -172,70 +182,35 @@ function LocationDropdown({
   results: SearchResults
   onSelect: (loc: SelectedLocation) => void
 }) {
-  const hasStops = results.stops.length > 0
-  const hasPlaces = results.places.length > 0
-  if (!hasStops && !hasPlaces) return null
+  if (results.places.length === 0) return null
 
   return (
     <div className="absolute top-full left-0 right-0 z-30 mt-1 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.12)] overflow-hidden border border-outline-variant/20 animate-fade-in-down">
-      {hasStops && (
-        <>
-          <div className="px-4 pt-3 pb-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-              Bus &amp; Rail Stops
-            </span>
+      <div className="px-4 pt-3 pb-1">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
+          Places
+        </span>
+      </div>
+      {results.places.map((place, i) => (
+        <button
+          key={i}
+          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left"
+          onPointerDown={(e) => {
+            e.preventDefault()
+            onSelect({ kind: 'address', name: place.displayName, lat: place.lat, lon: place.lon })
+          }}
+        >
+          <div className="w-7 h-7 bg-surface-container rounded-lg flex items-center justify-center shrink-0">
+            <Icon name="location_on" size={15} className="text-outline" />
           </div>
-          {results.stops.map((stop) => (
-            <button
-              key={stop.stopId}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                onSelect({ kind: 'stop', stopId: stop.stopId, name: stop.stopName, lat: stop.lat, lon: stop.lon })
-              }}
-            >
-              <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center shrink-0">
-                <Icon name="directions_bus" size={15} className="text-primary" />
-              </div>
-              <span className="text-sm font-medium text-on-surface">{stop.stopName}</span>
-            </button>
-          ))}
-        </>
-      )}
-
-      {hasStops && hasPlaces && (
-        <div className="mx-4 border-t border-outline-variant/20" />
-      )}
-
-      {hasPlaces && (
-        <>
-          <div className="px-4 pt-3 pb-1">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant/60">
-              Places
-            </span>
+          <div className="min-w-0">
+            <span className="text-sm font-medium text-on-surface block truncate">{place.name}</span>
+            {place.city && (
+              <span className="text-xs text-on-surface-variant truncate block">{place.city}</span>
+            )}
           </div>
-          {results.places.map((place, i) => (
-            <button
-              key={i}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-container-low transition-colors text-left"
-              onPointerDown={(e) => {
-                e.preventDefault()
-                onSelect({ kind: 'address', name: place.displayName, lat: place.lat, lon: place.lon })
-              }}
-            >
-              <div className="w-7 h-7 bg-surface-container rounded-lg flex items-center justify-center shrink-0">
-                <Icon name="location_on" size={15} className="text-outline" />
-              </div>
-              <div className="min-w-0">
-                <span className="text-sm font-medium text-on-surface block truncate">{place.name}</span>
-                {place.city && (
-                  <span className="text-xs text-on-surface-variant truncate block">{place.city}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </>
-      )}
+        </button>
+      ))}
     </div>
   )
 }
@@ -262,13 +237,13 @@ function LocationField({
   autoFocus?: boolean
 }) {
   const [focused, setFocused] = useState(false)
-  const [results, setResults] = useState<SearchResults>({ stops: [], places: [] })
+  const [results, setResults] = useState<SearchResults>({ places: [] })
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!focused || value.length < 2 || value === 'Current Location') {
-      setResults({ stops: [], places: [] })
+      setResults({ places: [] })
       return
     }
 
@@ -294,12 +269,8 @@ function LocationField({
         }))
       }
 
-      fetchStops(value, controller.signal)
-        .then((stops) => setResults((prev) => ({ ...prev, stops })))
-        .catch(() => {})
-
       fetchPhoton(streetQuery, controller.signal)
-        .then((places) => setResults((prev) => ({ ...prev, places: prependHouseNumber(places) })))
+        .then((places) => setResults({ places: prependHouseNumber(places) }))
         .catch(() => {})
 
       fetchNominatim(streetQuery, controller.signal)
@@ -309,7 +280,7 @@ function LocationField({
             const novel = prependHouseNumber(
               nominatim.filter((n) => !existing.includes(`${n.lat.toFixed(3)},${n.lon.toFixed(3)}`))
             )
-            return { ...prev, places: [...prev.places, ...novel].slice(0, 6) }
+            return { places: [...prev.places, ...novel].slice(0, 6) }
           })
         })
         .catch(() => {})
@@ -321,11 +292,11 @@ function LocationField({
     }
   }, [value, focused])
 
-  const showDropdown = focused && (results.stops.length > 0 || results.places.length > 0)
+  const showDropdown = focused && results.places.length > 0
 
   function clear() {
     onChange('')
-    setResults({ stops: [], places: [] })
+    setResults({ places: [] })
     abortRef.current?.abort()
   }
 
@@ -369,7 +340,7 @@ function LocationField({
             onChange(loc.name)
             setFocused(false)
             onFocusChange?.(false)
-            setResults({ stops: [], places: [] })
+            setResults({ places: [] })
             abortRef.current?.abort()
             ;(document.activeElement as HTMLElement)?.blur()
             onSelect(loc)
@@ -425,12 +396,22 @@ function SearchPageInner() {
       .catch(() => {})
   }, [])
 
-  // Pre-fill TO from URL params
+  // Pre-fill TO from URL params (used by Saved → search flow). The ID is
+  // stored as "lat,lon" for places; older stop-ID values just pre-fill the
+  // text and let the user re-pick from search.
   useEffect(() => {
     const toId = params.get('to')
     const toName = params.get('toName')
     if (toId && toName) {
-      setToLocation({ kind: 'stop', stopId: toId, name: toName, lat: 0, lon: 0 })
+      const coordMatch = toId.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/)
+      if (coordMatch) {
+        setToLocation({
+          kind: 'address',
+          name: toName,
+          lat: parseFloat(coordMatch[1]),
+          lon: parseFloat(coordMatch[2]),
+        })
+      }
       setToQuery(toName)
     }
   }, [params])
@@ -465,15 +446,13 @@ function SearchPageInner() {
 
   function locationToParams(loc: SelectedLocation | null, fallbackName: string) {
     if (!loc) return { id: 'current', name: fallbackName }
-    if (loc.kind === 'stop') return { id: loc.stopId, name: loc.name }
-    // For address results pass lat,lon as the ID — real API can resolve these
     return { id: `${loc.lat},${loc.lon}`, name: loc.name }
   }
 
   async function handleSaveDestination() {
     if (!toLocation) return
     setSaveState('saving')
-    const stop_id = toLocation.kind === 'stop' ? toLocation.stopId : `${toLocation.lat},${toLocation.lon}`
+    const stop_id = `${toLocation.lat},${toLocation.lon}`
     const res = await fetch('/api/saved', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -544,7 +523,7 @@ function SearchPageInner() {
               onChange={(v) => { setFromQuery(v); setFromLocation(null) }}
               onSelect={(loc) => setFromLocation(loc)}
               onFocusChange={setIsSearching}
-              placeholder="Current location or stop"
+              placeholder="Current location or address"
             />
 
             {/* Swap button — sits in the gap between FROM and TO */}
@@ -700,8 +679,7 @@ function SearchPageInner() {
                   <h3 className="font-headline font-bold text-lg">Recents</h3>
                   <div className="grid grid-cols-2 gap-4">
                     {recents.slice(0, 4).map((item, i) => {
-                      const isAddress = item.to_id.includes(',')
-                      const icon = isAddress ? 'location_on' : 'directions_bus'
+                      const coord = item.to_id.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/)
                       const isWide = i === 0
                       return (
                         <button
@@ -709,15 +687,19 @@ function SearchPageInner() {
                           style={{ animationDelay: `${i * 0.06}s` }}
                           className={`animate-fade-in-up animate-stagger ${isWide ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${isWide ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low hover:shadow-md transition-all duration-200 active:scale-[0.99]`}
                           onClick={() => {
-                            const loc: SelectedLocation = isAddress
-                              ? { kind: 'address', name: item.to_label, lat: parseFloat(item.to_id.split(',')[0]), lon: parseFloat(item.to_id.split(',')[1]) }
-                              : { kind: 'stop', stopId: item.to_id, name: item.to_label, lat: 0, lon: 0 }
-                            setToLocation(loc)
+                            if (coord) {
+                              setToLocation({
+                                kind: 'address',
+                                name: item.to_label,
+                                lat: parseFloat(coord[1]),
+                                lon: parseFloat(coord[2]),
+                              })
+                            }
                             setToQuery(item.to_label)
                           }}
                         >
                           <div className={`${isWide ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
-                            <Icon name={icon} size={isWide ? 20 : 16} />
+                            <Icon name="location_on" size={isWide ? 20 : 16} />
                           </div>
                           <div className="min-w-0">
                             <span className="font-bold block text-sm text-on-surface truncate">{item.to_label}</span>
