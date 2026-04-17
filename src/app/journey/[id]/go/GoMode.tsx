@@ -158,9 +158,9 @@ export default function GoMode({ journey, backHref }: Props) {
   }, [legIdx, legs.length, pos, currentLeg, distToLegEnd])
 
   return (
-    <div className="min-h-screen flex flex-col bg-surface">
+    <div className="min-h-screen bg-surface pb-40">
       {/* Top bar */}
-      <header className="flex items-center justify-between px-5 pt-5 pb-3">
+      <header className="flex items-center justify-between px-5 pt-5 pb-3 max-w-2xl mx-auto">
         <Link
           href={backHref}
           className="flex items-center gap-1 px-3 py-2 rounded-full bg-surface-container-low text-on-surface active:scale-95 transition-all"
@@ -179,7 +179,7 @@ export default function GoMode({ journey, backHref }: Props) {
       </header>
 
       {/* Progress bar */}
-      <div className="px-5">
+      <div className="px-5 max-w-2xl mx-auto">
         <div className="h-1.5 w-full rounded-full bg-surface-container overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-primary to-primary-container transition-all duration-700"
@@ -194,7 +194,7 @@ export default function GoMode({ journey, backHref }: Props) {
 
       {/* Geo status banner */}
       {(geo.kind === 'denied' || geo.kind === 'error') && (
-        <div className="mx-5 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-medium flex items-start gap-2">
+        <div className="mx-5 mt-4 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs font-medium flex items-start gap-2 max-w-2xl lg:mx-auto">
           <Icon name="location_off" size={16} />
           <div>
             <p className="font-bold">Location unavailable</p>
@@ -206,7 +206,7 @@ export default function GoMode({ journey, backHref }: Props) {
       )}
 
       {/* Map + current step */}
-      <main className="flex-1 px-5 pt-5 pb-4 overflow-y-auto">
+      <section className="px-5 pt-5 max-w-2xl mx-auto">
         <div className="mb-5">
           <GoMap
             legs={legs}
@@ -235,10 +235,12 @@ export default function GoMode({ journey, backHref }: Props) {
         {nextLeg && <NextUp leg={nextLeg} />}
 
         {isLast && <ArrivedSoon leg={currentLeg} />}
-      </main>
+      </section>
 
-      {/* Bottom action strip */}
-      <div className="sticky bottom-0 left-0 w-full px-5 pb-6 pt-4 bg-gradient-to-t from-surface via-surface/95 to-transparent">
+      {/* Bottom action strip — fixed so it doesn't fight any scroll container
+          and sits above the map/card regardless of viewport height. */}
+      <div className="fixed bottom-0 left-0 right-0 px-5 pb-6 pt-4 bg-gradient-to-t from-surface via-surface/95 to-transparent z-40">
+        <div className="max-w-2xl mx-auto">
         {isLast ? (
           <Link
             href={backHref}
@@ -274,6 +276,7 @@ export default function GoMode({ journey, backHref }: Props) {
             </button>
           </div>
         )}
+        </div>
       </div>
     </div>
   )

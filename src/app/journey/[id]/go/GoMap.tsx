@@ -139,7 +139,17 @@ export default function GoMap({
       }
     })
 
+    // Maplibre sometimes initialises with a stale canvas size (especially when
+    // lazily imported into a layout that changes width after mount). An RO
+    // guarantees we resize once the container settles, and again on any
+    // viewport-driven size change.
+    const ro = new ResizeObserver(() => {
+      if (mapRef.current) mapRef.current.resize()
+    })
+    ro.observe(containerRef.current)
+
     return () => {
+      ro.disconnect()
       map.remove()
       mapRef.current = null
       loadedRef.current = false
