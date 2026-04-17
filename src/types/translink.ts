@@ -35,7 +35,13 @@ export interface JourneyLeg {
   distance?: number // metres
   routeId?: string
   headsign?: string
-  intermediateStops?: Array<{ name: string; stopId: string; scheduledTime: string }>
+  intermediateStops?: Array<{
+    name: string
+    stopId: string
+    scheduledTime: string
+    lat?: number
+    lon?: number
+  }>
 }
 
 export interface Itinerary {

@@ -10,6 +10,7 @@ import type { LiveVehicle } from '@/app/api/translink/vehicles/route'
 import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { isInbound, matchesDirection } from '@/lib/direction'
+import { formatTime, minutesUntil } from '@/lib/time'
 
 const POLL_MS = 15_000
 const STOP_POLL_MS = 20_000
@@ -618,15 +619,6 @@ function operatorName(code: string): string {
   }
 }
 
-function formatTime(iso: string): string {
-  if (!iso) return ''
-  try {
-    return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-  } catch {
-    return ''
-  }
-}
-
 function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void }) {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
@@ -786,11 +778,6 @@ function StopDepartureRow({ d }: { d: Departure }) {
     )
   }
   return <li className="flex items-center gap-3 py-3">{content}</li>
-}
-
-function minutesUntil(iso: string): number {
-  if (!iso) return 0
-  return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000))
 }
 
 function MiniDirectionToggle({

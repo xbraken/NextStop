@@ -2,6 +2,8 @@ import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import type { RankedItinerary, JourneyLeg } from '@/types/translink'
 import { planJourney, rankItineraries } from '@/lib/translink'
+import { formatTime, minutesUntil } from '@/lib/time'
+import JourneyMap from './JourneyMap'
 
 export const runtime = 'nodejs'
 
@@ -18,17 +20,9 @@ interface PageProps {
   }>
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-}
-
 function formatDuration(seconds: number) {
   const m = Math.round(seconds / 60)
   return `${m} min${m !== 1 ? 's' : ''}`
-}
-
-function minutesUntil(iso: string) {
-  return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000))
 }
 
 function LegRow({ leg }: { leg: JourneyLeg }) {
@@ -180,6 +174,11 @@ export default async function JourneyDetailPage({ params, searchParams }: PagePr
           <p className="text-on-surface-variant font-medium">
             {firstBusLeg ? `Via ${firstBusLeg.routeId}` : 'Walking route'}
           </p>
+        </section>
+
+        {/* Map */}
+        <section className="mb-10 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
+          <JourneyMap legs={journey.legs} />
         </section>
 
         {/* Timeline */}

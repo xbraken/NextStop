@@ -4,6 +4,7 @@ import Icon from '@/components/ui/Icon'
 import LegVisualiser from '@/components/journey/LegVisualiser'
 import SaveRouteButton from './SaveRouteButton'
 import { planJourney, rankItineraries } from '@/lib/translink'
+import { minutesUntil } from '@/lib/time'
 import type { RankedItinerary } from '@/types/translink'
 
 export const runtime = 'nodejs'
@@ -26,11 +27,6 @@ function formatDuration(seconds: number) {
   const h = Math.floor(m / 60)
   const rem = m % 60
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`
-}
-
-function minutesUntil(isoString: string) {
-  const diff = new Date(isoString).getTime() - Date.now()
-  return Math.max(0, Math.round(diff / 60_000))
 }
 
 async function getJourneys(params: {

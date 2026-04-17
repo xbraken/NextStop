@@ -192,6 +192,7 @@ interface EfaLeg {
   stopSequence?: Array<{
     id?: string
     name?: string
+    coord?: [number, number]
     departureTimePlanned?: string
     arrivalTimePlanned?: string
   }>
@@ -230,11 +231,15 @@ function mapLeg(leg: EfaLeg): JourneyLeg {
     headsign: leg.transportation?.destination?.name,
     intermediateStops: leg.stopSequence
       ?.filter((s) => s.id)
-      .map((s) => ({
-        name: s.name ?? '',
-        stopId: s.id ?? '',
-        scheduledTime: s.departureTimePlanned ?? s.arrivalTimePlanned ?? '',
-      })),
+      .map((s) => {
+        const [lat, lon] = s.coord ?? []
+        return {
+          name: s.name ?? '',
+          stopId: s.id ?? '',
+          scheduledTime: s.departureTimePlanned ?? s.arrivalTimePlanned ?? '',
+          ...(typeof lat === 'number' && typeof lon === 'number' ? { lat, lon } : {}),
+        }
+      }),
   }
 }
 

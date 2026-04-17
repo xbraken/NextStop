@@ -7,6 +7,7 @@ import Icon from '@/components/ui/Icon'
 import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { matchesDirection, parseDirection } from '@/lib/direction'
+import { minutesUntil } from '@/lib/time'
 
 const POLL_MS = 15_000
 
@@ -465,7 +466,3 @@ function variantFor(d: Departure) {
   }
 }
 
-function minutesUntil(iso: string) {
-  if (!iso) return 0
-  return Math.max(0, Math.round((new Date(iso).getTime() - Date.now()) / 60_000))
-}
