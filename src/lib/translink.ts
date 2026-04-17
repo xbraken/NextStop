@@ -165,15 +165,22 @@ function mapDeparture(ev: EfaStopEvent): Departure {
   }
 }
 
-export async function getDepartures(stopId: string): Promise<DeparturesResponse> {
+export async function getDepartures(
+  stopId: string,
+  opts: { date?: string; time?: string } = {}
+): Promise<DeparturesResponse> {
   if (isMock()) return mockDepartures(stopId)
 
-  const data = await efaGet<{ stopEvents?: EfaStopEvent[] }>('XML_DM_REQUEST', {
+  const params: Record<string, string> = {
     ext_macro: 'dm',
     type_dm: 'any',
     name_dm: stopId,
     limit: '20',
-  })
+  }
+  if (opts.date) params.itdDate = opts.date.replace(/\D/g, '')
+  if (opts.time) params.itdTime = opts.time.replace(/\D/g, '')
+
+  const data = await efaGet<{ stopEvents?: EfaStopEvent[] }>('XML_DM_REQUEST', params)
   return {
     stopId,
     departures: (data.stopEvents ?? []).map(mapDeparture),

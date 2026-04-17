@@ -7,13 +7,50 @@ import Icon from '@/components/ui/Icon'
 import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
 import { matchesDirection, parseDirection } from '@/lib/direction'
-import { minutesUntil } from '@/lib/time'
+import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
 
 const POLL_MS = 15_000
+const POLL_MS_FUTURE = 60_000
 
 type SelectedStop = { stopId: string; stopName: string }
 type DirFilter = StopDirection | null
+// null = "Leave now" (live). A string is an ISO-like local value: the exact
+// future moment the user wants to preview.
+type TimeMode = { kind: 'now' } | { kind: 'at'; date: string; time: string }
+
+function pad(n: number) {
+  return String(n).padStart(2, '0')
+}
+
+function todayISODate() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function tomorrowISODate() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+function addToNow(minutes: number): { date: string; time: string } {
+  const d = new Date(Date.now() + minutes * 60_000)
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  }
+}
+
+function formatTimeMode(mode: TimeMode) {
+  if (mode.kind === 'now') return 'Now'
+  const label = mode.date === todayISODate()
+    ? 'Today'
+    : mode.date === tomorrowISODate()
+      ? 'Tomorrow'
+      : new Date(mode.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  return `${label} · ${mode.time}`
+}
 
 export default function LivePage() {
   return (
@@ -33,10 +70,12 @@ function LivePageInner() {
     presetId ? { stopId: presetId, stopName: presetName ?? presetId } : null
   )
   const [direction, setDirection] = useState<DirFilter>(presetDir)
+  const [timeMode, setTimeMode] = useState<TimeMode>({ kind: 'now' })
 
   // Reset the direction filter when the user picks a different stop
   useEffect(() => {
     setDirection(presetDir)
+    setTimeMode({ kind: 'now' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stop?.stopId])
 
@@ -64,7 +103,8 @@ function LivePageInner() {
               <DirectionToggle value={direction} onChange={setDirection} />
               <SaveStopButton stop={stop} direction={direction} />
             </div>
-            <DepartureBoard stop={stop} direction={direction} />
+            <TimePicker value={timeMode} onChange={setTimeMode} />
+            <DepartureBoard stop={stop} direction={direction} timeMode={timeMode} />
           </>
         )}
         {!stop && (
@@ -166,6 +206,162 @@ function SaveStopButton({ stop, direction }: { stop: SelectedStop; direction: Di
       <Icon name={icon} size={18} filled={state === 'saved'} />
       {text}
     </button>
+  )
+}
+
+// ---------------- Time picker ----------------
+
+function TimePicker({
+  value,
+  onChange,
+}: {
+  value: TimeMode
+  onChange: (m: TimeMode) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const isFuture = value.kind === 'at'
+
+  const initial = value.kind === 'at' ? value : { date: todayISODate(), time: addToNow(15).time }
+  const [date, setDate] = useState(initial.date)
+  const [time, setTime] = useState(initial.time)
+
+  // Keep the panel inputs in sync when the parent value changes (e.g. quick chip).
+  useEffect(() => {
+    if (value.kind === 'at') {
+      setDate(value.date)
+      setTime(value.time)
+    }
+  }, [value])
+
+  function applyQuick(minutes: number) {
+    const next = addToNow(minutes)
+    onChange({ kind: 'at', date: next.date, time: next.time })
+    setOpen(false)
+  }
+
+  function applyManual() {
+    if (!date || !time) return
+    onChange({ kind: 'at', date, time })
+    setOpen(false)
+  }
+
+  function reset() {
+    onChange({ kind: 'now' })
+    setOpen(false)
+  }
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`w-full flex items-center justify-between gap-3 px-5 py-3 rounded-xl border transition-colors ${
+          isFuture
+            ? 'bg-primary/10 border-primary/30 text-primary'
+            : 'bg-surface-container-lowest border-outline-variant/30 text-on-surface'
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          <Icon name={isFuture ? 'schedule' : 'bolt'} size={18} filled={isFuture} />
+          <span className="font-headline font-bold text-sm">{formatTimeMode(value)}</span>
+        </span>
+        <span className="flex items-center gap-2 text-xs font-semibold opacity-80">
+          {isFuture && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                reset()
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  reset()
+                }
+              }}
+              className="px-2 py-1 rounded-full hover:bg-primary/15 active:scale-95 cursor-pointer"
+            >
+              Now
+            </span>
+          )}
+          <Icon name={open ? 'expand_less' : 'expand_more'} size={18} />
+        </span>
+      </button>
+
+      {open && (
+        <div className="mt-3 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+              Quick
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: '+15 min', mins: 15 },
+                { label: '+30 min', mins: 30 },
+                { label: '+1 hr', mins: 60 },
+                { label: '+2 hrs', mins: 120 },
+              ].map((q) => (
+                <button
+                  key={q.label}
+                  type="button"
+                  onClick={() => applyQuick(q.mins)}
+                  className="px-3 py-1.5 rounded-full bg-surface-container text-xs font-semibold hover:bg-surface-container-high active:scale-95 transition-all"
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                Date
+              </span>
+              <input
+                type="date"
+                value={date}
+                min={todayISODate()}
+                onChange={(e) => setDate(e.target.value)}
+                className="bg-surface-container rounded-lg px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                Time
+              </span>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="bg-surface-container rounded-lg px-3 py-2 text-sm font-medium outline-none focus:ring-2 focus:ring-primary"
+              />
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            {isFuture && (
+              <button
+                type="button"
+                onClick={reset}
+                className="px-4 py-2 rounded-full text-sm font-semibold text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all"
+              >
+                Reset to now
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={applyManual}
+              className="px-4 py-2 rounded-full bg-primary text-on-primary text-sm font-bold active:scale-95 transition-all"
+            >
+              Show times
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -274,17 +470,34 @@ function StopPicker({
 
 // ---------------- Departure board ----------------
 
-function DepartureBoard({ stop, direction }: { stop: SelectedStop; direction: DirFilter }) {
+function DepartureBoard({
+  stop,
+  direction,
+  timeMode,
+}: {
+  stop: SelectedStop
+  direction: DirFilter
+  timeMode: TimeMode
+}) {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
   const [updatedAt, setUpdatedAt] = useState<number>(0)
+
+  const isFuture = timeMode.kind === 'at'
+  const futureDate = timeMode.kind === 'at' ? timeMode.date : ''
+  const futureTime = timeMode.kind === 'at' ? timeMode.time : ''
 
   useEffect(() => {
     let cancelled = false
 
     async function load() {
       try {
-        const res = await fetch(`/api/translink/departures?stopId=${encodeURIComponent(stop.stopId)}`)
+        const qs = new URLSearchParams({ stopId: stop.stopId })
+        if (isFuture) {
+          qs.set('date', futureDate)
+          qs.set('time', futureTime)
+        }
+        const res = await fetch(`/api/translink/departures?${qs.toString()}`)
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json()
         if (cancelled) return
@@ -298,21 +511,46 @@ function DepartureBoard({ stop, direction }: { stop: SelectedStop; direction: Di
 
     setDepartures(null)
     load()
-    const id = setInterval(load, POLL_MS)
+    const id = setInterval(load, isFuture ? POLL_MS_FUTURE : POLL_MS)
     return () => {
       cancelled = true
       clearInterval(id)
     }
-  }, [stop.stopId])
+  }, [stop.stopId, isFuture, futureDate, futureTime])
 
-  const filtered = (departures ?? []).filter((d) => matchesDirection(d.destination, direction))
-  const filteredEmpty = departures !== null && filtered.length === 0
+  // Re-render every 5s so cards transition to "leaving" the moment their
+  // departure time slips into the past.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    if (isFuture) return
+    const id = setInterval(() => forceTick((n) => n + 1), 5_000)
+    return () => clearInterval(id)
+  }, [isFuture])
+
+  type Tagged = { d: Departure; key: string; leaving: boolean }
+  const tagged: Tagged[] = (departures ?? [])
+    .filter((d) => matchesDirection(d.destination, direction))
+    .map((d, i) => {
+      const key = `${d.serviceId}|${d.scheduledDeparture}|${d.destination}|${i}`
+      if (isFuture) return { d, key, leaving: false }
+      const iso = d.expectedDeparture || d.scheduledDeparture
+      if (!iso) return { d, key, leaving: false }
+      const t = new Date(iso).getTime()
+      if (Number.isNaN(t)) return { d, key, leaving: false }
+      // Bus is "gone" 30s past its departure time. The pop-out animation
+      // takes ~0.55s; the card stays in the DOM until the next poll prunes it.
+      return { d, key, leaving: t <= Date.now() - 30_000 }
+    })
+
+  const filteredEmpty = departures !== null && tagged.length === 0
   const totalLoaded = (departures ?? []).length
 
   return (
     <section className="mt-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-headline font-extrabold text-lg">Next departures</h2>
+        <h2 className="font-headline font-extrabold text-lg">
+          {isFuture ? 'Scheduled departures' : 'Next departures'}
+        </h2>
         <UpdatedIndicator updatedAt={updatedAt} error={error} />
       </div>
 
@@ -336,10 +574,12 @@ function DepartureBoard({ stop, direction }: { stop: SelectedStop; direction: Di
         </div>
       )}
 
-      {filtered.length > 0 && (
-        <div className="space-y-3">
-          {filtered.map((d, i) => (
-            <DepartureCard key={`${d.serviceId}-${d.scheduledDeparture}-${i}`} d={d} />
+      {tagged.length > 0 && (
+        <div className="flex flex-col gap-3">
+          {tagged.map(({ d, key, leaving }) => (
+            <div key={key} className={leaving ? 'animate-pop-out' : ''}>
+              <DepartureCard d={d} showAbsolute={isFuture} />
+            </div>
           ))}
         </div>
       )}
@@ -372,9 +612,11 @@ function UpdatedIndicator({ updatedAt, error }: { updatedAt: number; error: bool
   )
 }
 
-function DepartureCard({ d }: { d: Departure }) {
+function DepartureCard({ d, showAbsolute = false }: { d: Departure; showAbsolute?: boolean }) {
   const variant = variantFor(d)
-  const minsAway = minutesUntil(d.expectedDeparture || d.scheduledDeparture)
+  const iso = d.expectedDeparture || d.scheduledDeparture
+  const minsAway = minutesUntil(iso)
+  const absoluteTime = formatTime(iso)
   const trackable = !!d.serviceId
   const mapHref = `/live/map?line=${encodeURIComponent(d.serviceId)}&dest=${encodeURIComponent(d.destination)}`
 
@@ -395,13 +637,31 @@ function DepartureCard({ d }: { d: Departure }) {
       </div>
 
       <div className="text-right flex flex-col items-end">
-        <div className="text-2xl font-headline font-extrabold text-on-surface leading-none">
-          {minsAway <= 0 ? 'Now' : minsAway}
-        </div>
-        {minsAway > 0 && (
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-outline mt-1">
-            min
-          </div>
+        {showAbsolute ? (
+          <>
+            <div className="text-2xl font-headline font-extrabold text-on-surface leading-none">
+              {absoluteTime || '—'}
+            </div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-outline mt-1">
+              Scheduled
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-2xl font-headline font-extrabold text-on-surface leading-none">
+              {minsAway <= 0 ? 'Now' : minsAway}
+            </div>
+            {minsAway > 0 && (
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-outline mt-1">
+                min
+              </div>
+            )}
+            {absoluteTime && (
+              <div className="text-xs font-semibold text-on-surface-variant mt-1 tabular-nums">
+                {absoluteTime}
+              </div>
+            )}
+          </>
         )}
         {trackable && (
           <div className="mt-2 flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
