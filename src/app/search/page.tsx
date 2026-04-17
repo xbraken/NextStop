@@ -369,7 +369,7 @@ function SearchPageInner() {
   const [toLocation, setToLocation] = useState<SelectedLocation | null>(null)
   const [isSearching, setIsSearching] = useState(false)
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'duplicate'>('idle')
-  const [mode, setMode] = useState<'leave_now' | 'leave_at'>('leave_at')
+  const [mode, setMode] = useState<'leave_now' | 'leave_at'>('leave_now')
   const [selectedDate, setSelectedDate] = useState(0)
   const [timeHour, setTimeHour] = useState(today.getHours())
   const [timeMinute, setTimeMinute] = useState(Math.floor(today.getMinutes() / 5) * 5)
