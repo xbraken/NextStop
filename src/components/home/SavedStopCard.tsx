@@ -8,7 +8,7 @@ import type { SavedDestination } from '@/types/user'
 import type { Departure } from '@/types/translink'
 import { matchesDirection, isInbound } from '@/lib/direction'
 import { variantFor } from '@/lib/departure'
-import { minutesUntil } from '@/lib/time'
+import { minutesUntil, formatTime } from '@/lib/time'
 
 const POLL_MS = 60_000
 
@@ -71,6 +71,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
             <DepartureRow
               serviceId={nextBus.serviceId}
               minsAway={nextBus.minsAway}
+              time={nextBus.time}
               variant={nextBus.variant}
               inbound={nextBus.inbound}
               showDirection={!stop.direction}
@@ -81,6 +82,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
                 key={i}
                 serviceId={u.serviceId}
                 minsAway={u.minsAway}
+                time={u.time}
                 variant={u.variant}
                 inbound={u.inbound}
                 showDirection={!stop.direction}
@@ -103,6 +105,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
 function DepartureRow({
   serviceId,
   minsAway,
+  time,
   variant,
   inbound,
   showDirection = false,
@@ -110,6 +113,7 @@ function DepartureRow({
 }: {
   serviceId: string | null
   minsAway: number
+  time: string
   variant: ReturnType<typeof variantFor>
   inbound: boolean
   showDirection?: boolean
@@ -141,6 +145,13 @@ function DepartureRow({
       >
         {label}
       </span>
+      <span
+        className={`ml-auto shrink-0 tabular-nums ${
+          primary ? 'text-[11px] font-bold text-on-surface-variant' : 'text-[10px] text-on-surface-variant/70'
+        }`}
+      >
+        {formatTime(time)}
+      </span>
     </div>
   )
 }
@@ -152,18 +163,14 @@ function DepartureRow({
 type NextBus = {
   serviceId: string | null
   minsAway: number
+  time: string
   variant: ReturnType<typeof variantFor>
   inbound: boolean
 }
 
 function useNextBus(stop: SavedDestination): {
   next: NextBus | null
-  upcoming: Array<{
-    serviceId: string | null
-    minsAway: number
-    variant: ReturnType<typeof variantFor>
-    inbound: boolean
-  }>
+  upcoming: Array<NextBus>
 } {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   // tick forces re-render so minutes-away counts down without a new fetch
@@ -223,12 +230,14 @@ function useNextBus(stop: SavedDestination): {
     next: {
       serviceId: first.serviceId ?? null,
       minsAway: minutesUntil(first.expectedDeparture || first.scheduledDeparture),
+      time: first.expectedDeparture || first.scheduledDeparture,
       variant: variantFor(first),
       inbound: isInbound(first.destination),
     },
     upcoming: sorted.slice(1, 4).map((d) => ({
       serviceId: d.serviceId ?? null,
       minsAway: minutesUntil(d.expectedDeparture || d.scheduledDeparture),
+      time: d.expectedDeparture || d.scheduledDeparture,
       variant: variantFor(d),
       inbound: isInbound(d.destination),
     })),
