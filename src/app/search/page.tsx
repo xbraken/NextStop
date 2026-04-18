@@ -459,6 +459,28 @@ function SearchPageInner() {
     return { kind: 'address', name: top.displayName, lat: top.lat, lon: top.lon }
   }
 
+  // One-tap replay: jump straight to the journey results for a past trip,
+  // using "now" so the user sees live departures rather than a stale time.
+  function runRecent(item: RecentItem) {
+    fetch('/api/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_label: item.from_label,
+        from_id: item.from_id,
+        to_label: item.to_label,
+        to_id: item.to_id,
+      }),
+    }).catch(() => {})
+
+    const now = new Date()
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const time = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    router.push(
+      `/journey?from=${encodeURIComponent(item.from_id)}&fromName=${encodeURIComponent(item.from_label)}&to=${encodeURIComponent(item.to_id)}&toName=${encodeURIComponent(item.to_label)}&date=${date}&time=${time}&mode=leave_now`
+    )
+  }
+
   async function handleFindJourneys() {
     if (!toLocation && toQuery.trim().length < 2) return
 
@@ -499,6 +521,34 @@ function SearchPageInner() {
       </header>
 
       <main className="pt-20 px-6 max-w-2xl mx-auto space-y-8 pb-36">
+        {/* Recent trips — one-tap replay of the last few journeys. Sits above
+            the search fields because most usage is the same handful of trips,
+            so a single tap usually gets you there faster than typing. */}
+        {recents.length > 0 && !isSearching && (
+          <section className="pt-2 animate-fade-in">
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="font-headline font-bold text-lg text-on-surface">Recent trips</h2>
+              <Icon name="history" size={18} className="text-outline" />
+            </div>
+            <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-6 px-6 pb-1">
+              {recents.slice(0, 5).map((item, i) => (
+                <button
+                  key={`${item.to_id}-${i}`}
+                  onClick={() => runRecent(item)}
+                  style={{ animationDelay: `${i * 0.06}s` }}
+                  className="animate-fade-in-up animate-stagger shrink-0 w-44 bg-surface-container-lowest p-4 rounded-2xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] border border-outline-variant/10 hover:bg-surface-container-low hover:shadow-md active:scale-[0.98] transition-all text-left"
+                >
+                  <div className="w-9 h-9 bg-primary/10 rounded-xl flex items-center justify-center text-primary mb-3">
+                    <Icon name="near_me" filled size={18} />
+                  </div>
+                  <p className="font-bold text-sm text-on-surface truncate">{item.to_label}</p>
+                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5">from {item.from_label}</p>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* FROM / TO */}
         <section className="space-y-3 pt-2">
           <div className="relative flex flex-col gap-3">
@@ -662,45 +712,6 @@ function SearchPageInner() {
                   </div>
                 </div>
               </section>
-
-              {/* Recents */}
-              {recents.length > 0 && (
-                <section className="space-y-4">
-                  <h3 className="font-headline font-bold text-lg">Recents</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    {recents.slice(0, 4).map((item, i) => {
-                      const coord = item.to_id.match(/^(-?\d+\.\d+),(-?\d+\.\d+)$/)
-                      const isWide = i === 0
-                      return (
-                        <button
-                          key={item.to_id}
-                          style={{ animationDelay: `${i * 0.06}s` }}
-                          className={`animate-fade-in-up animate-stagger ${isWide ? 'col-span-2' : ''} bg-surface-container-lowest p-5 rounded-2xl flex ${isWide ? 'flex-row items-center gap-4' : 'flex-col gap-3'} shadow-sm border border-outline-variant/10 text-left hover:bg-surface-container-low hover:shadow-md transition-all duration-200 active:scale-[0.99]`}
-                          onClick={() => {
-                            if (coord) {
-                              setToLocation({
-                                kind: 'address',
-                                name: item.to_label,
-                                lat: parseFloat(coord[1]),
-                                lon: parseFloat(coord[2]),
-                              })
-                            }
-                            setToQuery(item.to_label)
-                          }}
-                        >
-                          <div className={`${isWide ? 'w-10 h-10' : 'w-8 h-8'} bg-primary/10 rounded-xl flex items-center justify-center text-primary shrink-0`}>
-                            <Icon name="location_on" size={isWide ? 20 : 16} />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="font-bold block text-sm text-on-surface truncate">{item.to_label}</span>
-                            <span className="text-[11px] text-on-surface-variant truncate block">from {item.from_label}</span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </section>
-              )}
             </div>
           </div>
         </div>
