@@ -5,6 +5,7 @@ import LegVisualiser from '@/components/journey/LegVisualiser'
 import SaveRouteButton from './SaveRouteButton'
 import { planJourney, rankItineraries } from '@/lib/translink'
 import { formatTime, minutesUntil } from '@/lib/time'
+import { itineraryStatus } from '@/lib/journey-status'
 import type { RankedItinerary } from '@/types/translink'
 
 export const runtime = 'nodejs'
@@ -97,6 +98,7 @@ async function JourneyResults({ searchParams }: PageProps) {
     <div className="space-y-5">
       {journeys.map((journey, idx) => {
         const minsAway = minutesUntil(journey.departure)
+        const status = itineraryStatus(journey)
         const detailHref = `/journey/${journey.id}?from=${from}&fromName=${encodeURIComponent(sp.fromName ?? 'Current Location')}&to=${to}&toName=${encodeURIComponent(sp.toName ?? '')}&date=${date}&time=${time}&mode=${mode}&idx=${idx}`
 
         return (
@@ -146,8 +148,9 @@ async function JourneyResults({ searchParams }: PageProps) {
                 <Icon name="conversion_path" size={14} />
                 {journey.transfers === 0 ? 'Direct' : `${journey.transfers} change${journey.transfers > 1 ? 's' : ''}`}
               </span>
-              <span className="text-xs font-bold text-primary bg-primary/10 px-3 py-1 rounded-full">
-                On Time
+              <span className={`text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1.5 ${status.className}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                {status.label}
               </span>
             </div>
           </Link>
