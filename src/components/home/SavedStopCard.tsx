@@ -29,67 +29,74 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
     : 'Live arrivals')
 
   return (
-    <Link
-      href={href}
-      className="group block p-3 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-          style={color ? { backgroundColor: color.bg } : undefined}
-        >
-          <span style={color ? { color: color.fg } : undefined} className={color ? '' : 'text-primary'}>
-            <Icon name={shown} size={18} filled />
-          </span>
+    <div className="relative shrink-0 w-56">
+      <Link
+        href={href}
+        className="group block p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+      >
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+            style={color ? { backgroundColor: color.bg } : undefined}
+          >
+            <span style={color ? { color: color.fg } : undefined} className={color ? '' : 'text-primary'}>
+              <Icon name={shown} size={18} filled />
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-xs text-on-surface truncate">{stop.label}</p>
+            {(stop.direction || stop.routes) && (
+              <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                {stop.direction && (
+                  <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">
+                    <Icon name={stop.direction === 'inbound' ? 'south' : 'north'} size={10} />
+                    {stop.direction}
+                  </span>
+                )}
+                {stop.direction && stop.routes && (
+                  <span className="shrink-0 text-[9px] text-on-surface-variant/60">·</span>
+                )}
+                {stop.routes && (
+                  <span className="truncate text-[9px] font-bold text-on-surface-variant">
+                    {stop.routes.split(',').map((r) => r.trim()).filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
-          {(stop.direction || stop.routes) ? (
-            <div className="flex items-center gap-1 mt-0.5 min-w-0">
-              {stop.direction && (
-                <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">
-                  <Icon name={stop.direction === 'inbound' ? 'south' : 'north'} size={10} />
-                  {stop.direction}
-                </span>
-              )}
-              {stop.direction && stop.routes && (
-                <span className="shrink-0 text-[9px] text-on-surface-variant/60">·</span>
-              )}
-              {stop.routes && (
-                <span className="truncate text-[9px] font-bold text-on-surface-variant">
-                  {stop.routes.split(',').map((r) => r.trim()).filter(Boolean).join(' · ')}
-                </span>
-              )}
-            </div>
-          ) : !nextBus ? (
-            <p className="mt-0.5 text-[10px] text-on-surface-variant truncate">{fallbackSubtitle}</p>
-          ) : null}
-        </div>
-      </div>
 
-      {nextBus ? (
-        <div className="mt-3 flex flex-col gap-1.5">
-          <DepartureRow
-            serviceId={nextBus.serviceId}
-            minsAway={nextBus.minsAway}
-            variant={nextBus.variant}
-            inbound={nextBus.inbound}
-            showDirection={!stop.direction}
-            primary
-          />
-          {upcoming.map((u, i) => (
+        {nextBus ? (
+          <div className="flex flex-col gap-1.5">
             <DepartureRow
-              key={i}
-              serviceId={u.serviceId}
-              minsAway={u.minsAway}
-              variant={u.variant}
-              inbound={u.inbound}
+              serviceId={nextBus.serviceId}
+              minsAway={nextBus.minsAway}
+              variant={nextBus.variant}
+              inbound={nextBus.inbound}
               showDirection={!stop.direction}
+              primary
             />
-          ))}
-        </div>
-      ) : null}
-    </Link>
+            {upcoming.slice(0, 1).map((u, i) => (
+              <DepartureRow
+                key={i}
+                serviceId={u.serviceId}
+                minsAway={u.minsAway}
+                variant={u.variant}
+                inbound={u.inbound}
+                showDirection={!stop.direction}
+              />
+            ))}
+            {upcoming.length === 0 && (
+              <p className="text-[10px] text-on-surface-variant mt-0.5">No other buses scheduled</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[11px] text-on-surface-variant truncate">
+            {fallbackSubtitle}
+          </p>
+        )}
+      </Link>
+    </div>
   )
 }
 
@@ -111,7 +118,6 @@ function DepartureRow({
   const label = minsAway <= 0 ? 'Now' : `${minsAway} min`
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${variant.dot}`} />
       {showDirection && (
         <span
           className={`shrink-0 inline-flex ${inbound ? 'text-primary' : 'text-on-surface-variant'}`}

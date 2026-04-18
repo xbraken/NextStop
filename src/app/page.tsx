@@ -42,7 +42,7 @@ async function loadHomeData(): Promise<{
       args: [session.userId],
     }),
     db.execute({
-      sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY sort_order IS NULL, sort_order ASC, created_at DESC LIMIT 50',
       args: [session.userId],
     }),
   ])
@@ -192,7 +192,7 @@ function StopsSection({ stops }: { stops: SavedDestination[] }) {
           Live
         </Link>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
         {stops.map((stop, i) => {
           const sub = stop.routes
             ? `Routes ${stop.routes.split(',').join(', ')}`
