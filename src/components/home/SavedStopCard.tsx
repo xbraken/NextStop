@@ -1,12 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import { SAVED_ICON_OPTIONS } from '@/lib/saved-icons'
 import type { SavedColor } from '@/lib/saved-colors'
 import type { SavedDestination } from '@/types/user'
+import type { Departure } from '@/types/translink'
+import { matchesDirection } from '@/lib/direction'
+import { variantFor } from '@/lib/departure'
+import { minutesUntil } from '@/lib/time'
+
+const POLL_MS = 60_000
 
 type Props = {
   stop: SavedDestination
@@ -20,6 +26,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
   const [icon, setIcon] = useState<string | null>(stop.icon)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const nextBus = useNextBus(stop)
 
   async function pick(next: string | null) {
     const previous = icon
@@ -41,6 +48,9 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
   }
 
   const shown = icon ?? defaultIcon
+  const fallbackSubtitle = subtitle ?? (stop.direction
+    ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
+    : 'Live arrivals')
 
   return (
     <div className="relative shrink-0 w-44">
@@ -57,11 +67,18 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
           </span>
         </div>
         <p className="font-bold text-sm text-on-surface truncate pr-5">{stop.label}</p>
-        <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
-          {subtitle ?? (stop.direction
-            ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
-            : 'Live arrivals')}
-        </p>
+        {nextBus ? (
+          <div className="mt-0.5 flex items-center gap-1.5 min-w-0">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${nextBus.variant.dot}`} />
+            <span className={`text-[11px] font-bold truncate ${nextBus.variant.className}`}>
+              {nextBus.minsAway <= 0 ? 'Now' : `${nextBus.minsAway} min`} · {nextBus.short}
+            </span>
+          </div>
+        ) : (
+          <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
+            {fallbackSubtitle}
+          </p>
+        )}
       </Link>
 
       <button
@@ -178,4 +195,86 @@ function IconPickerDialog({
   )
 
   return createPortal(dialog, document.body)
+}
+
+// Fetches the next matching departure for a saved stop and keeps it fresh.
+// Respects the stop's saved direction + routes filter so "inbound on the 8A"
+// shows only 8A inbounds. Returns null until the first load resolves so the
+// card can fall back to its static subtitle in the meantime.
+function useNextBus(stop: SavedDestination): {
+  minsAway: number
+  variant: ReturnType<typeof variantFor>
+  short: string
+} | null {
+  const [departures, setDepartures] = useState<Departure[] | null>(null)
+  // tick forces re-render so minutes-away counts down without a new fetch
+  const [, setTick] = useState(0)
+
+  const routesFilter = useMemo(() => {
+    if (!stop.routes) return null
+    const ids = stop.routes.split(',').map((r) => r.trim()).filter(Boolean)
+    return ids.length > 0 ? new Set(ids) : null
+  }, [stop.routes])
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch(`/api/translink/departures?stopId=${encodeURIComponent(stop.stop_id)}`)
+        if (!res.ok) throw new Error(String(res.status))
+        const data = await res.json()
+        if (!cancelled) setDepartures(data.departures ?? [])
+      } catch {
+        if (!cancelled) setDepartures([])
+      }
+    }
+    load()
+    const id = setInterval(load, POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [stop.stop_id])
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
+  if (!departures) return null
+
+  const now = Date.now()
+  const next = departures
+    .filter((d) => matchesDirection(d.destination, stop.direction))
+    .filter((d) => !routesFilter || (d.serviceId && routesFilter.has(d.serviceId)))
+    .filter((d) => {
+      const t = new Date(d.expectedDeparture || d.scheduledDeparture).getTime()
+      return !Number.isNaN(t) && t >= now - 30_000
+    })
+    .sort((a, b) => {
+      const at = new Date(a.expectedDeparture || a.scheduledDeparture).getTime()
+      const bt = new Date(b.expectedDeparture || b.scheduledDeparture).getTime()
+      return at - bt
+    })[0]
+
+  if (!next) return null
+
+  return {
+    minsAway: minutesUntil(next.expectedDeparture || next.scheduledDeparture),
+    variant: variantFor(next),
+    short: shortStatus(next),
+  }
+}
+
+// Condenses variantFor's label ("Live · 2 min late") into the tightest thing
+// that still communicates status, since a 176px card can't fit the long form.
+function shortStatus(d: Departure): string {
+  if (d.status === 'Cancelled') return 'cancelled'
+  if (!d.isLive) return 'scheduled'
+  const drift = Math.round(
+    (new Date(d.expectedDeparture).getTime() - new Date(d.scheduledDeparture).getTime()) / 60_000
+  )
+  if (drift >= 2) return `${drift} min late`
+  if (drift <= -1) return `${Math.abs(drift)} min early`
+  return 'on time'
 }
