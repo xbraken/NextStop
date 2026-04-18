@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
 import { isValidColorKey } from '@/lib/saved-colors'
+import { isValidIcon } from '@/lib/saved-icons'
 
 export const runtime = 'nodejs'
 
@@ -21,8 +22,9 @@ export async function DELETE(
   return NextResponse.json({ ok: true })
 }
 
-// PATCH — only the color + label are user-editable for now. Anything else in
-// the body is ignored so callers can't mutate identifying fields (stop_id etc).
+// PATCH — only the color, icon, and label are user-editable for now. Anything
+// else in the body is ignored so callers can't mutate identifying fields
+// (stop_id etc). `null` for color/icon clears back to the default.
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -44,6 +46,15 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid color' }, { status: 400 })
     }
     updates.push('color = ?')
+    args.push(key ?? null)
+  }
+
+  if ('icon' in body) {
+    const key = body.icon
+    if (key !== null && !isValidIcon(key)) {
+      return NextResponse.json({ error: 'Invalid icon' }, { status: 400 })
+    }
+    updates.push('icon = ?')
     args.push(key ?? null)
   }
 

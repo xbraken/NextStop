@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import LocationHeader from '@/components/home/LocationHeader'
+import SavedStopCard from '@/components/home/SavedStopCard'
 import { Suspense } from 'react'
 import TranslinkStatusCard from '@/components/home/TranslinkStatusCard'
 import { getSession } from '@/lib/auth'
@@ -155,32 +156,27 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
               Live
             </Link>
           </div>
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1">
+          <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
             {stops.map((stop, i) => {
-              const c = getSavedColor(stop.color)
               const sub = stop.routes
                 ? `Routes ${stop.routes.split(',').join(', ')}`
                 : stop.direction
                   ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
                   : 'Live arrivals'
               return (
-                <Link
+                <div
                   key={stop.id}
-                  href={stopHref(stop)}
                   style={{ animationDelay: `${0.18 + i * 0.04}s` }}
-                  className="animate-fade-in animate-stagger group shrink-0 w-44 p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+                  className="animate-fade-in animate-stagger"
                 >
-                  <div
-                    className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-                    style={{ backgroundColor: c.bg }}
-                  >
-                    <span style={{ color: c.fg }}>
-                      <Icon name="directions_bus" size={18} filled />
-                    </span>
-                  </div>
-                  <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
-                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5">{sub}</p>
-                </Link>
+                  <SavedStopCard
+                    stop={stop}
+                    href={stopHref(stop)}
+                    subtitle={sub}
+                    defaultIcon="directions_bus"
+                    color={getSavedColor(stop.color)}
+                  />
+                </div>
               )
             })}
           </div>

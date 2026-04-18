@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
 import { isValidColorKey } from '@/lib/saved-colors'
+import { isValidIcon } from '@/lib/saved-icons'
 
 export const runtime = 'nodejs'
 
@@ -25,12 +26,13 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw, routes: routesRaw, color: colorRaw } = body ?? {}
+  const { kind: kindRaw, label, stop_name, stop_id, lat, lng, from_label, from_id, direction: dirRaw, routes: routesRaw, color: colorRaw, icon: iconRaw } = body ?? {}
   const color: string | null = isValidColorKey(colorRaw) ? colorRaw : null
   const kind: 'destination' | 'stop' | 'route' =
     kindRaw === 'stop' || kindRaw === 'route' ? kindRaw : 'destination'
   const direction: 'inbound' | 'outbound' | null =
     kind === 'stop' && (dirRaw === 'inbound' || dirRaw === 'outbound') ? dirRaw : null
+  const icon: string | null = isValidIcon(iconRaw) ? iconRaw : null
 
   // Normalise the route-filter list: dedup, trim, sort so dedupe key is stable.
   // Empty/absent means "All routes".
@@ -79,7 +81,7 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await db.execute({
-    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction, routes, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
+    sql: 'INSERT INTO saved_destinations (user_id, kind, label, stop_name, stop_id, lat, lng, from_label, from_id, direction, routes, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *',
     args: [
       session.userId,
       kind,
@@ -93,6 +95,7 @@ export async function POST(req: NextRequest) {
       direction,
       routes,
       color,
+      icon,
     ],
   })
   return NextResponse.json({ destination: result.rows[0] }, { status: 201 })

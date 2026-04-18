@@ -21,6 +21,7 @@ export interface SavedDestination {
   direction: StopDirection | null
   routes: string | null
   color: string | null
+  icon: string | null
   created_at: string
 }
 
