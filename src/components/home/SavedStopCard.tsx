@@ -119,7 +119,11 @@ function DepartureRow({
   showDirection?: boolean
   primary?: boolean
 }) {
-  const label = minsAway <= 0 ? 'Now' : `${minsAway} min`
+  const label = minsAway <= 0
+    ? 'Now'
+    : minsAway < 60
+      ? `${minsAway} min`
+      : `${Math.floor(minsAway / 60)}h ${minsAway % 60}m`
   return (
     <div className="flex items-center gap-2 min-w-0">
       {showDirection && (

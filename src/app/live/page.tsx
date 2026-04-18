@@ -10,7 +10,7 @@ import type { StopDirection } from '@/types/user'
 import { matchesDirection, parseDirection, isInbound } from '@/lib/direction'
 import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
-import { parseRoutes, routeSort } from '@/lib/routes'
+import { parseRoutes } from '@/lib/routes'
 import RouteFilter from '@/components/live/RouteFilter'
 
 const POLL_MS = 15_000
@@ -109,26 +109,28 @@ function LivePageInner() {
   return (
     <>
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md h-16 flex items-center justify-between px-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Icon name="sensors" size={22} className="text-primary" filled />
-          <h1 className="font-headline font-bold text-xl text-primary">Live Departures</h1>
+          <h1 className="font-headline font-bold text-xl text-primary truncate">Live</h1>
         </div>
-        <Link
-          href="/live/map"
-          className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all"
-        >
-          <Icon name="map" size={16} filled />
-          Map
-        </Link>
+        <div className="flex items-center gap-2">
+          {stop && <SaveStopButton stop={stop} direction={direction} routes={selectedRoutes} />}
+          <Link
+            href="/live/map"
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all"
+          >
+            <Icon name="map" size={16} filled />
+            Map
+          </Link>
+        </div>
       </header>
 
       <main className="pt-20 pb-32 px-6 max-w-2xl mx-auto">
         <StopPicker selected={stop} onSelect={setStop} onClear={() => setStop(null)} />
         {stop && (
           <>
-            <div className="mt-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="mt-4">
               <DirectionToggle value={direction} onChange={setDirection} />
-              <SaveStopButton stop={stop} direction={direction} routes={selectedRoutes} />
             </div>
             <RouteFilter
               known={knownRoutes}
@@ -235,26 +237,13 @@ function SaveStopButton({
     setState('saved')
   }
 
-  const defaultText = (() => {
-    const dir =
-      direction === 'inbound' ? 'inbound' :
-      direction === 'outbound' ? 'outbound' :
-      ''
-    if (routes.length > 0) {
-      const list = [...routes].sort(routeSort).join('/')
-      return dir ? `Save ${dir} · ${list}` : `Save · ${list}`
-    }
-    if (direction) return `Save ${dir}`
-    return 'Save this stop'
-  })()
-
   const { icon, text, disabled } = (() => {
     switch (state) {
       case 'saving': return { icon: 'hourglass_empty', text: 'Saving…', disabled: true }
       case 'saved': return { icon: 'check_circle', text: 'Saved', disabled: true }
-      case 'duplicate': return { icon: 'bookmark', text: 'Already saved', disabled: true }
-      case 'error': return { icon: 'error', text: 'Sign in to save', disabled: true }
-      default: return { icon: 'bookmark_add', text: defaultText, disabled: false }
+      case 'duplicate': return { icon: 'bookmark', text: 'Saved', disabled: true }
+      case 'error': return { icon: 'error', text: 'Sign in', disabled: true }
+      default: return { icon: 'bookmark_add', text: 'Save', disabled: false }
     }
   })()
 
@@ -263,9 +252,9 @@ function SaveStopButton({
       type="button"
       onClick={save}
       disabled={disabled}
-      className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-full text-sm font-semibold active:scale-95 transition-all disabled:opacity-70"
+      className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all disabled:opacity-70"
     >
-      <Icon name={icon} size={18} filled={state === 'saved'} />
+      <Icon name={icon} size={16} filled={state === 'saved'} />
       {text}
     </button>
   )
@@ -311,6 +300,8 @@ function TimePicker({
   const days = nextNDays(7)
   // "Today" is selected whenever we're in now-mode OR in at-mode on today.
   const selectedDay = isFuture ? pendingDay : today
+  // Whole panel collapses to a small chip by default — departures take focus.
+  const [panelOpen, setPanelOpen] = useState(value.kind === 'at')
 
   function pickDay(iso: string) {
     setPendingDay(iso)
@@ -328,13 +319,40 @@ function TimePicker({
     onChange({ kind: 'at', date: pendingDay, time: `${pad(hour)}:${pad(minute)}` })
   }
 
+  // Collapsed state: small chip summarising current mode, nothing else.
+  if (!panelOpen) {
+    const label = value.kind === 'now'
+      ? 'Leaving now'
+      : `${value.date === today ? 'Today' : (days.find((d) => d.iso === value.date)?.label ?? value.date)} · ${value.time}`
+    return (
+      <button
+        type="button"
+        onClick={() => setPanelOpen(true)}
+        className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-low text-xs font-semibold text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all"
+      >
+        <Icon name="schedule" size={14} />
+        {label}
+        <Icon name="expand_more" size={14} />
+      </button>
+    )
+  }
+
   return (
     <div className="mt-4 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-4">
       {/* Day row */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-          Pick a day
-        </p>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+            Pick a day
+          </p>
+          <button
+            type="button"
+            onClick={() => setPanelOpen(false)}
+            className="text-[11px] font-semibold text-on-surface-variant hover:text-on-surface"
+          >
+            Done
+          </button>
+        </div>
         <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
           {days.map((d) => {
             const active = selectedDay === d.iso
@@ -401,9 +419,25 @@ function TimePicker({
           <button
             type="button"
             onClick={apply}
-            className="w-full py-3 rounded-full bg-primary text-on-primary font-headline font-bold text-sm shadow-md active:scale-95 transition-all"
+            aria-label={`Show times for ${pad(hour)}:${pad(minute)} on ${days.find((d) => d.iso === pendingDay)?.label ?? pendingDay}`}
+            className="group relative w-full flex items-stretch rounded-2xl bg-primary text-on-primary shadow-md active:scale-[0.98] transition-all overflow-hidden"
           >
-            Show times for {pad(hour)}:{pad(minute)}
+            <span className="absolute top-1/2 -translate-y-1/2 -left-2 w-4 h-4 rounded-full bg-surface-container-lowest" aria-hidden />
+            <span className="absolute top-1/2 -translate-y-1/2 -right-2 w-4 h-4 rounded-full bg-surface-container-lowest" aria-hidden />
+            <div className="flex items-center gap-3 px-4 py-3 flex-1 min-w-0">
+              <Icon name="confirmation_number" size={26} filled />
+              <div className="text-left min-w-0">
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+                  Show buses
+                </p>
+                <p className="font-headline font-extrabold text-base truncate">
+                  {days.find((d) => d.iso === pendingDay)?.label ?? pendingDay} · {pad(hour)}:{pad(minute)}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col items-center justify-center px-4 border-l-2 border-dashed border-on-primary/30">
+              <Icon name="arrow_forward" size={20} />
+            </div>
           </button>
         </div>
       )}
@@ -736,10 +770,14 @@ function DepartureCard({
           </>
         ) : (
           <>
-            <div className="text-2xl font-headline font-extrabold text-on-surface leading-none">
-              {minsAway <= 0 ? 'Now' : minsAway}
+            <div className="text-2xl font-headline font-extrabold text-on-surface leading-none tabular-nums">
+              {minsAway <= 0
+                ? 'Now'
+                : minsAway < 60
+                  ? minsAway
+                  : `${Math.floor(minsAway / 60)}h ${minsAway % 60}m`}
             </div>
-            {minsAway > 0 && (
+            {minsAway > 0 && minsAway < 60 && (
               <div className="text-[10px] font-semibold uppercase tracking-wider text-outline mt-1">
                 min
               </div>
