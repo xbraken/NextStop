@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Icon from '@/components/ui/Icon'
@@ -26,6 +26,25 @@ export default function ReorderableList({ items }: Props) {
   const router = useRouter()
   const [order, setOrder] = useState(items)
   const [, startTransition] = useTransition()
+
+  // Keep local order synced with server-refreshed props so that a color change
+  // or delete (both of which call router.refresh()) reflects immediately. We
+  // reconcile by id: preserve user-reordered positions, drop removed items,
+  // and append new ones at the end.
+  useEffect(() => {
+    setOrder((prev) => {
+      const byId = new Map(items.map((e) => [e.item.id, e]))
+      const kept: typeof items = []
+      for (const e of prev) {
+        const fresh = byId.get(e.item.id)
+        if (fresh) {
+          kept.push(fresh)
+          byId.delete(e.item.id)
+        }
+      }
+      return [...kept, ...byId.values()]
+    })
+  }, [items])
 
   function move(index: number, delta: -1 | 1) {
     const target = index + delta
@@ -88,7 +107,11 @@ export default function ReorderableList({ items }: Props) {
               <p className="text-sm text-on-surface-variant truncate">{subtitle}</p>
             </div>
           </Link>
-          <SavedActions destId={item.id} currentColor={item.color} />
+          <SavedActions
+            destId={item.id}
+            currentColor={item.color}
+            currentIcon={icon}
+          />
         </div>
       ))}
     </>

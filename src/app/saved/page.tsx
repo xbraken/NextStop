@@ -95,7 +95,7 @@ function Section({
         <ReorderableList
           items={items.map((item) => ({
             item,
-            icon: iconFor(item.kind, item.label, item.stop_id),
+            icon: item.icon ?? iconFor(item.kind, item.label, item.stop_id),
             href: hrefFor(item),
             subtitle: subtitle(item),
           }))}
