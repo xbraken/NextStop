@@ -289,10 +289,9 @@ function TimePicker({
       const [hh = '09', mm = '00'] = value.time.split(':')
       return { date: value.date, hour: parseInt(hh, 10), minute: parseInt(mm, 10) }
     }
-    const now = new Date()
-    const m = (Math.floor(now.getMinutes() / 5) + 1) * 5
-    const h = m >= 60 ? (now.getHours() + 1) % 24 : now.getHours()
-    return { date: today, hour: h, minute: m % 60 }
+    // Default to 06:00 — most future planning is for an early-morning
+    // journey, so opening the wheel at midday feels arbitrary.
+    return { date: today, hour: 6, minute: 0 }
   })()
   const [pendingDay, setPendingDay] = useState(initial.date)
   const [hour, setHour] = useState(initial.hour)
