@@ -235,10 +235,10 @@ function modeFromClass(cls?: number): JourneyLeg['mode'] {
 function mapLeg(leg: EfaLeg): JourneyLeg {
   const cls = leg.transportation?.product?.class
   const mode = modeFromClass(cls)
-  const start =
-    leg.origin?.departureTimeEstimated ?? leg.origin?.departureTimePlanned ?? ''
-  const end =
-    leg.destination?.arrivalTimeEstimated ?? leg.destination?.arrivalTimePlanned ?? ''
+  const scheduledStart = leg.origin?.departureTimePlanned
+  const scheduledEnd = leg.destination?.arrivalTimePlanned
+  const start = leg.origin?.departureTimeEstimated ?? scheduledStart ?? ''
+  const end = leg.destination?.arrivalTimeEstimated ?? scheduledEnd ?? ''
   const [oLat, oLon] = leg.origin?.coord ?? [0, 0]
   const [dLat, dLon] = leg.destination?.coord ?? [0, 0]
   return {
@@ -247,6 +247,8 @@ function mapLeg(leg: EfaLeg): JourneyLeg {
     to: { name: leg.destination?.name ?? '', stopId: leg.destination?.id, lat: dLat, lon: dLon },
     startTime: start,
     endTime: end,
+    scheduledStart,
+    scheduledEnd,
     duration: leg.duration ?? 0,
     distance: leg.distance,
     routeId: leg.transportation?.number,

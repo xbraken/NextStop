@@ -5,6 +5,7 @@ import Icon from '@/components/ui/Icon'
 import type { RankedItinerary, JourneyLeg } from '@/types/translink'
 import { planJourney, rankItineraries } from '@/lib/translink'
 import { formatTime, minutesUntil } from '@/lib/time'
+import { itineraryStatus, legStatus } from '@/lib/journey-status'
 
 // Maplibre is ~250KB. Loading it lazily lets the timeline text appear first
 // and the map fades in once its chunk arrives.
@@ -58,6 +59,7 @@ function LegRow({ leg }: { leg: JourneyLeg }) {
   }
 
   const minsAway = minutesUntil(leg.startTime)
+  const status = legStatus(leg)
 
   return (
     <div className="relative flex gap-5 mb-14">
@@ -80,11 +82,17 @@ function LegRow({ leg }: { leg: JourneyLeg }) {
           <span className="text-primary font-bold text-sm shrink-0">{formatDuration(leg.duration)}</span>
         </div>
         <div className="bg-surface-container-low rounded-xl p-4 flex items-center justify-between border border-outline-variant/10">
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-1">
             <span className="text-[10px] uppercase font-bold tracking-widest text-on-surface-variant opacity-60">
               Next Departure
             </span>
             <span className="text-lg font-headline font-extrabold">{formatTime(leg.startTime)}</span>
+            {status && (
+              <span className={`mt-1 self-start text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${status.className}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                {status.label}
+              </span>
+            )}
           </div>
           <div className="text-right">
             <span className="text-sm font-bold text-primary">
@@ -170,6 +178,7 @@ async function JourneyDetail({
   const lastLeg = journey.legs[journey.legs.length - 1]
   const totalMins = Math.round(journey.duration / 60)
   const firstBusLeg = journey.legs.find((l) => l.mode !== 'WALK')
+  const overallStatus = itineraryStatus(journey)
 
   return (
     <>
@@ -181,9 +190,15 @@ async function JourneyDetail({
           </h2>
           <span className="text-lg font-headline font-bold text-primary">{totalMins} mins</span>
         </div>
-        <p className="text-on-surface-variant font-medium">
-          {firstBusLeg ? `Via ${firstBusLeg.routeId}` : 'Walking route'}
-        </p>
+        <div className="flex items-center gap-3 flex-wrap mt-1">
+          <p className="text-on-surface-variant font-medium">
+            {firstBusLeg ? `Via ${firstBusLeg.routeId}` : 'Walking route'}
+          </p>
+          <span className={`text-xs font-bold px-3 py-1 rounded-full inline-flex items-center gap-1.5 ${overallStatus.className}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${overallStatus.dot}`} />
+            {overallStatus.label}
+          </span>
+        </div>
       </section>
 
       {/* Map */}

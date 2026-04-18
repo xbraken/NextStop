@@ -29,8 +29,13 @@ export interface JourneyLeg {
   mode: 'WALK' | 'BUS' | 'RAIL'
   from: { name: string; stopId?: string; lat: number; lon: number }
   to: { name: string; stopId?: string; lat: number; lon: number }
+  // Best-known departure/arrival (realtime estimate when available, else planned).
   startTime: string
   endTime: string
+  // Planned times straight from the timetable — kept separately so we can
+  // compute delay vs estimate. Absent if the response didn't include them.
+  scheduledStart?: string
+  scheduledEnd?: string
   duration: number // seconds
   distance?: number // metres
   routeId?: string
