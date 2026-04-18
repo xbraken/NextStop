@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import { SAVED_ICON_OPTIONS } from '@/lib/saved-icons'
@@ -19,19 +20,8 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
   const [icon, setIcon] = useState<string | null>(stop.icon)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const rootRef = useRef<HTMLDivElement>(null)
 
-  // Close the popover when tapping outside so it doesn't stay stuck open.
-  useEffect(() => {
-    if (!open) return
-    function onDown(e: PointerEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('pointerdown', onDown)
-    return () => document.removeEventListener('pointerdown', onDown)
-  }, [open])
-
-  async function pick(next: string) {
+  async function pick(next: string | null) {
     const previous = icon
     setIcon(next)
     setOpen(false)
@@ -53,7 +43,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
   const shown = icon ?? defaultIcon
 
   return (
-    <div ref={rootRef} className="relative shrink-0 w-44">
+    <div className="relative shrink-0 w-44">
       <Link
         href={href}
         className="group block p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
@@ -79,43 +69,113 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
         onClick={(e) => {
           e.preventDefault()
           e.stopPropagation()
-          setOpen((v) => !v)
+          setOpen(true)
         }}
         aria-label="Change icon"
-        className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container/70 backdrop-blur-sm hover:bg-surface-container-high active:scale-90 transition-all ${
-          open ? 'opacity-100' : 'opacity-70 hover:opacity-100'
-        }`}
+        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container/70 backdrop-blur-sm hover:bg-surface-container-high active:scale-90 transition-all opacity-70 hover:opacity-100"
       >
         <Icon name={saving ? 'hourglass_empty' : 'edit'} size={14} />
       </button>
 
       {open && (
-        <div className="absolute z-30 top-10 right-0 w-56 p-3 bg-surface-container-lowest rounded-xl shadow-[0_12px_40px_rgba(26,28,28,0.14)] border border-outline-variant/20 animate-fade-in-down">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2 px-1">
-            Pick an icon
-          </p>
-          <div className="grid grid-cols-4 gap-1.5">
-            {SAVED_ICON_OPTIONS.map((opt) => {
-              const active = shown === opt.name
-              return (
-                <button
-                  key={opt.name}
-                  type="button"
-                  onClick={() => pick(opt.name)}
-                  title={opt.label}
-                  className={`h-11 rounded-lg flex items-center justify-center transition-all active:scale-90 ${
-                    active
-                      ? 'bg-primary text-on-primary shadow-sm'
-                      : 'bg-surface-container hover:bg-surface-container-high text-on-surface-variant'
-                  }`}
-                >
-                  <Icon name={opt.name} size={18} filled={active} />
-                </button>
-              )
-            })}
-          </div>
-        </div>
+        <IconPickerDialog
+          label={stop.label}
+          current={shown}
+          onPick={pick}
+          onClose={() => setOpen(false)}
+        />
       )}
     </div>
   )
+}
+
+function IconPickerDialog({
+  label,
+  current,
+  onPick,
+  onClose,
+}: {
+  label: string
+  current: string
+  onPick: (name: string | null) => void
+  onClose: () => void
+}) {
+  // Render into document.body so no ancestor's overflow/transform can clip us.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    // Lock body scroll while the sheet is open.
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [onClose])
+
+  if (!mounted) return null
+
+  const dialog = (
+    <div
+      className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in"
+        onClick={onClose}
+      />
+      <div className="relative w-full sm:w-auto sm:max-w-md bg-surface-container-lowest rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 pb-8 sm:pb-6 animate-fade-in-up">
+        <div className="mx-auto sm:hidden w-10 h-1 rounded-full bg-outline-variant/50 mb-4" />
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-headline font-extrabold text-lg">Pick an icon</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container active:scale-90 transition-all"
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </div>
+        <p className="text-sm text-on-surface-variant mb-5 truncate">for {label}</p>
+
+        <div className="grid grid-cols-4 gap-2 max-h-[60vh] overflow-y-auto">
+          {SAVED_ICON_OPTIONS.map((opt) => {
+            const active = current === opt.name
+            return (
+              <button
+                key={opt.name}
+                type="button"
+                onClick={() => onPick(opt.name)}
+                className={`flex flex-col items-center justify-center gap-1 py-3 rounded-xl transition-all active:scale-95 ${
+                  active
+                    ? 'bg-primary text-on-primary shadow-md'
+                    : 'bg-surface-container hover:bg-surface-container-high text-on-surface'
+                }`}
+              >
+                <Icon name={opt.name} size={24} filled={active} />
+                <span className="text-[10px] font-semibold leading-none">{opt.label}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => onPick(null)}
+          className="mt-5 w-full py-3 rounded-full text-sm font-semibold text-on-surface-variant hover:bg-surface-container active:scale-95 transition-all"
+        >
+          Use default icon
+        </button>
+      </div>
+    </div>
+  )
+
+  return createPortal(dialog, document.body)
 }
