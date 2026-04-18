@@ -9,6 +9,11 @@ import { db } from '@/lib/db'
 import { ensureMigrated } from '@/lib/db-init'
 import type { SavedDestination } from '@/types/user'
 import { getSavedColor } from '@/lib/saved-colors'
+import {
+  DEFAULT_HOME_LAYOUT,
+  type HomeSectionId,
+  parseHomeLayout,
+} from '@/lib/home-sections'
 
 export const runtime = 'nodejs'
 
@@ -18,29 +23,41 @@ interface SavedGroups {
   routes: SavedDestination[]
 }
 
-async function getSavedGrouped(userId: number): Promise<SavedGroups> {
-  // One round trip; cap rows so a power user with 200 saved entries doesn't
-  // bloat the homepage payload. Per-section caps applied client-side.
-  const result = await db.execute({
-    sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
-    args: [userId],
-  })
-  const rows = result.rows as unknown as SavedDestination[]
-  return {
-    destinations: rows.filter((r) => r.kind === 'destination' || r.kind == null).slice(0, 3),
-    stops: rows.filter((r) => r.kind === 'stop').slice(0, 6),
-    routes: rows.filter((r) => r.kind === 'route').slice(0, 6),
-  }
-}
+const EMPTY_GROUPS: SavedGroups = { destinations: [], stops: [], routes: [] }
 
-// Streamed inside Suspense so the hero search renders without waiting on the
-// DB round trip. Both migrate + session checks are parallelised.
-async function SavedSection() {
-  const [, session] = await Promise.all([ensureMigrated(), getSession()])
-  const groups: SavedGroups = session
-    ? await getSavedGrouped(session.userId)
-    : { destinations: [], stops: [], routes: [] }
-  return <SavedSectionView groups={groups} />
+async function loadHomeData(): Promise<{
+  layout: HomeSectionId[]
+  groups: SavedGroups
+  signedIn: boolean
+}> {
+  await ensureMigrated()
+  const session = await getSession()
+  if (!session) {
+    return { layout: DEFAULT_HOME_LAYOUT, groups: EMPTY_GROUPS, signedIn: false }
+  }
+  // One round trip for both the layout preference and the saved rows.
+  const [prefs, saved] = await Promise.all([
+    db.execute({
+      sql: 'SELECT home_layout FROM users WHERE id = ? LIMIT 1',
+      args: [session.userId],
+    }),
+    db.execute({
+      sql: 'SELECT * FROM saved_destinations WHERE user_id = ? ORDER BY created_at DESC LIMIT 50',
+      args: [session.userId],
+    }),
+  ])
+  const raw = (prefs.rows[0]?.home_layout as string | null | undefined) ?? null
+  const layout = parseHomeLayout(raw) ?? DEFAULT_HOME_LAYOUT
+  const rows = saved.rows as unknown as SavedDestination[]
+  return {
+    layout,
+    groups: {
+      destinations: rows.filter((r) => r.kind === 'destination' || r.kind == null).slice(0, 3),
+      stops: rows.filter((r) => r.kind === 'stop').slice(0, 6),
+      routes: rows.filter((r) => r.kind === 'route').slice(0, 6),
+    },
+    signedIn: true,
+  }
 }
 
 function stopHref(item: SavedDestination): string {
@@ -59,14 +76,25 @@ function routeHref(item: SavedDestination): string {
   )
 }
 
-function SavedSectionView({ groups }: { groups: SavedGroups }) {
-  const { destinations, stops, routes } = groups
-  const hasAnything = destinations.length + stops.length + routes.length > 0
+function SearchSection() {
+  return (
+    <Link
+      href="/search"
+      className="flex items-center gap-4 h-20 px-6 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] hover:shadow-[0_12px_40px_rgba(0,101,101,0.1)] hover:scale-[1.005] transition-all duration-200"
+    >
+      <Icon name="search" size={24} className="text-primary/50" />
+      <span className="text-2xl font-headline font-bold text-outline-variant">
+        Where to?
+      </span>
+    </Link>
+  )
+}
 
+function DestinationsSection({ destinations, hasAnything }: { destinations: SavedDestination[]; hasAnything: boolean }) {
   return (
     <>
       {destinations.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto hide-scrollbar">
+        <div className="flex gap-3 overflow-x-auto hide-scrollbar mb-6">
           {destinations.map((dest, i) => (
             <Link
               key={dest.id}
@@ -81,7 +109,7 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
         </div>
       )}
 
-      <section className="space-y-4 animate-fade-in-up animate-stagger mt-8" style={{ animationDelay: '0.12s' }}>
+      <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
             Saved Destinations
@@ -144,102 +172,158 @@ function SavedSectionView({ groups }: { groups: SavedGroups }) {
             )}
           </div>
         )}
-      </section>
-
-      {stops.length > 0 && (
-        <section className="space-y-3 animate-fade-in-up animate-stagger mt-8" style={{ animationDelay: '0.16s' }}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
-              Saved Stops
-            </h2>
-            <Link href="/live" className="text-primary text-sm font-bold">
-              Live
-            </Link>
-          </div>
-          <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
-            {stops.map((stop, i) => {
-              const sub = stop.routes
-                ? `Routes ${stop.routes.split(',').join(', ')}`
-                : stop.direction
-                  ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
-                  : 'Live arrivals'
-              return (
-                <div
-                  key={stop.id}
-                  style={{ animationDelay: `${0.18 + i * 0.04}s` }}
-                  className="animate-fade-in animate-stagger"
-                >
-                  <SavedStopCard
-                    stop={stop}
-                    href={stopHref(stop)}
-                    subtitle={sub}
-                    defaultIcon="directions_bus"
-                    color={getSavedColor(stop.color)}
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {routes.length > 0 && (
-        <section className="space-y-3 animate-fade-in-up animate-stagger mt-8" style={{ animationDelay: '0.20s' }}>
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
-              Saved Routes
-            </h2>
-            <Link href="/saved" className="text-primary text-sm font-bold">
-              All
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {routes.map((route, i) => {
-              const c = getSavedColor(route.color)
-              return (
-              <Link
-                key={route.id}
-                href={routeHref(route)}
-                style={{ animationDelay: `${0.22 + i * 0.04}s` }}
-                className="animate-fade-in animate-stagger flex items-center gap-3 p-3 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
-              >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ backgroundColor: c.bg }}
-                >
-                  <span style={{ color: c.fg }}>
-                    <Icon name="route" size={18} />
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-sm text-on-surface truncate">{route.label}</p>
-                  <p className="text-[11px] text-on-surface-variant truncate mt-0.5 flex items-center gap-1">
-                    <span className="truncate">{route.from_label ?? 'Current Location'}</span>
-                    <Icon name="arrow_forward" size={11} className="text-outline shrink-0" />
-                    <span className="truncate">{route.stop_name}</span>
-                  </p>
-                </div>
-                <Icon name="chevron_right" size={18} className="text-outline shrink-0" />
-              </Link>
-              )
-            })}
-          </div>
-        </section>
-      )}
+      </div>
     </>
   )
 }
 
-function SavedSkeleton() {
+function StopsSection({ stops }: { stops: SavedDestination[] }) {
+  if (stops.length === 0) return null
   return (
-    <section className="space-y-4 mt-8">
-      <div className="h-3 w-32 bg-surface-container rounded animate-pulse" />
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2 h-32 rounded-xl bg-surface-container animate-pulse" />
-        <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
-        <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
+          Saved Stops
+        </h2>
+        <Link href="/live" className="text-primary text-sm font-bold">
+          Live
+        </Link>
       </div>
-    </section>
+      <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
+        {stops.map((stop, i) => {
+          const sub = stop.routes
+            ? `Routes ${stop.routes.split(',').join(', ')}`
+            : stop.direction
+              ? `${stop.direction === 'inbound' ? '↓' : '↑'} ${stop.direction}`
+              : 'Live arrivals'
+          return (
+            <div
+              key={stop.id}
+              style={{ animationDelay: `${0.18 + i * 0.04}s` }}
+              className="animate-fade-in animate-stagger"
+            >
+              <SavedStopCard
+                stop={stop}
+                href={stopHref(stop)}
+                subtitle={sub}
+                defaultIcon="directions_bus"
+                color={getSavedColor(stop.color)}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function RoutesSection({ routes }: { routes: SavedDestination[] }) {
+  if (routes.length === 0) return null
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-label font-bold uppercase tracking-widest text-on-surface-variant">
+          Saved Routes
+        </h2>
+        <Link href="/saved" className="text-primary text-sm font-bold">
+          All
+        </Link>
+      </div>
+      <div className="space-y-2">
+        {routes.map((route, i) => {
+          const c = getSavedColor(route.color)
+          return (
+            <Link
+              key={route.id}
+              href={routeHref(route)}
+              style={{ animationDelay: `${0.22 + i * 0.04}s` }}
+              className="animate-fade-in animate-stagger flex items-center gap-3 p-3 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
+            >
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                style={{ backgroundColor: c.bg }}
+              >
+                <span style={{ color: c.fg }}>
+                  <Icon name="route" size={18} />
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-sm text-on-surface truncate">{route.label}</p>
+                <p className="text-[11px] text-on-surface-variant truncate mt-0.5 flex items-center gap-1">
+                  <span className="truncate">{route.from_label ?? 'Current Location'}</span>
+                  <Icon name="arrow_forward" size={11} className="text-outline shrink-0" />
+                  <span className="truncate">{route.stop_name}</span>
+                </p>
+              </div>
+              <Icon name="chevron_right" size={18} className="text-outline shrink-0" />
+            </Link>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function StatusSection() {
+  return (
+    <Suspense
+      fallback={
+        <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
+      }
+    >
+      <TranslinkStatusCard />
+    </Suspense>
+  )
+}
+
+async function HomeBody() {
+  const { layout, groups, signedIn } = await loadHomeData()
+  const { destinations, stops, routes } = groups
+  const hasAnything = destinations.length + stops.length + routes.length > 0
+
+  const renderers: Record<HomeSectionId, () => React.ReactNode> = {
+    search: () => <SearchSection />,
+    destinations: () =>
+      signedIn ? (
+        <DestinationsSection destinations={destinations} hasAnything={hasAnything} />
+      ) : null,
+    stops: () => (signedIn ? <StopsSection stops={stops} /> : null),
+    routes: () => (signedIn ? <RoutesSection routes={routes} /> : null),
+    status: () => <StatusSection />,
+  }
+
+  return (
+    <>
+      {layout.map((id, i) => {
+        const node = renderers[id]()
+        if (!node) return null
+        return (
+          <section
+            key={id}
+            className="animate-fade-in-up animate-stagger"
+            style={{ animationDelay: `${0.05 + i * 0.05}s` }}
+          >
+            {node}
+          </section>
+        )
+      })}
+    </>
+  )
+}
+
+function HomeSkeleton() {
+  return (
+    <>
+      <div className="h-20 rounded-xl bg-surface-container animate-pulse" />
+      <section className="space-y-4 mt-8">
+        <div className="h-3 w-32 bg-surface-container rounded animate-pulse" />
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2 h-32 rounded-xl bg-surface-container animate-pulse" />
+          <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
+          <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -279,31 +363,9 @@ export default function HomePage() {
           </Suspense>
         </div>
 
-        <section className="space-y-4 animate-fade-in-up" style={{ animationDelay: '0.05s' }}>
-          <Link
-            href="/search"
-            className="flex items-center gap-4 h-20 px-6 bg-surface-container-lowest rounded-xl shadow-[0_8px_32px_rgba(26,28,28,0.06)] hover:shadow-[0_12px_40px_rgba(0,101,101,0.1)] hover:scale-[1.005] transition-all duration-200"
-          >
-            <Icon name="search" size={24} className="text-primary/50" />
-            <span className="text-2xl font-headline font-bold text-outline-variant">
-              Where to?
-            </span>
-          </Link>
-
-          <Suspense fallback={<SavedSkeleton />}>
-            <SavedSection />
-          </Suspense>
-        </section>
-
-        <section className="animate-fade-in-up animate-stagger" style={{ animationDelay: '0.2s' }}>
-          <Suspense
-            fallback={
-              <div className="h-24 rounded-xl bg-surface-container animate-pulse" />
-            }
-          >
-            <TranslinkStatusCard />
-          </Suspense>
-        </section>
+        <Suspense fallback={<HomeSkeleton />}>
+          <HomeBody />
+        </Suspense>
       </main>
     </>
   )
