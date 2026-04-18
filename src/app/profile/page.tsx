@@ -37,6 +37,7 @@ export default async function ProfilePage() {
             <div className="space-y-3">
               {[
                 { href: '/saved', icon: 'bookmark', label: 'Saved Destinations' },
+                { href: '/home/customise', icon: 'tune', label: 'Customise Home Screen' },
                 { href: '/search', icon: 'route', label: 'Plan a Journey' },
               ].map((item) => (
                 <a

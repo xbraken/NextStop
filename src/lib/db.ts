@@ -34,6 +34,7 @@ export async function migrate() {
     "ALTER TABLE saved_destinations ADD COLUMN routes TEXT",
     "ALTER TABLE saved_destinations ADD COLUMN color TEXT",
     "ALTER TABLE saved_destinations ADD COLUMN icon TEXT",
+    "ALTER TABLE users ADD COLUMN home_layout TEXT",
   ]) {
     try { await db.execute(sql) } catch { /* column already exists */ }
   }
@@ -43,6 +44,7 @@ export async function migrate() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
+      home_layout TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
