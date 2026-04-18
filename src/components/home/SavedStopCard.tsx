@@ -26,7 +26,7 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
   const [icon, setIcon] = useState<string | null>(stop.icon)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const nextBus = useNextBus(stop)
+  const { next: nextBus, upcoming } = useNextBus(stop)
 
   async function pick(next: string | null) {
     const previous = icon
@@ -68,12 +68,33 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
         </div>
         <p className="font-bold text-sm text-on-surface truncate pr-5">{stop.label}</p>
         {nextBus ? (
-          <div className="mt-0.5 flex items-center gap-1.5 min-w-0">
-            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${nextBus.variant.dot}`} />
-            <span className={`text-[11px] font-bold truncate ${nextBus.variant.className}`}>
-              {nextBus.minsAway <= 0 ? 'Now' : `${nextBus.minsAway} min`} · {nextBus.short}
-            </span>
-          </div>
+          <>
+            <div className="mt-1 flex items-center gap-1.5 min-w-0">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${nextBus.variant.dot}`} />
+              {nextBus.serviceId && (
+                <span className="shrink-0 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-extrabold leading-none">
+                  {nextBus.serviceId}
+                </span>
+              )}
+              <span className={`text-[11px] font-bold truncate ${nextBus.variant.className}`}>
+                {nextBus.minsAway <= 0 ? 'Now' : `${nextBus.minsAway} min`}
+              </span>
+            </div>
+            <p className="text-[10px] text-on-surface-variant truncate mt-0.5">
+              {nextBus.short}
+              {upcoming.length > 0 && (
+                <>
+                  {' · then '}
+                  {upcoming.map((u, i) => (
+                    <span key={i}>
+                      {i > 0 && ', '}
+                      {u.serviceId || '–'} ({u.minsAway}m)
+                    </span>
+                  ))}
+                </>
+              )}
+            </p>
+          </>
         ) : (
           <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
             {fallbackSubtitle}
@@ -201,11 +222,17 @@ function IconPickerDialog({
 // Respects the stop's saved direction + routes filter so "inbound on the 8A"
 // shows only 8A inbounds. Returns null until the first load resolves so the
 // card can fall back to its static subtitle in the meantime.
-function useNextBus(stop: SavedDestination): {
+type NextBus = {
+  serviceId: string | null
   minsAway: number
   variant: ReturnType<typeof variantFor>
   short: string
-} | null {
+}
+
+function useNextBus(stop: SavedDestination): {
+  next: NextBus | null
+  upcoming: Array<{ serviceId: string | null; minsAway: number }>
+} {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   // tick forces re-render so minutes-away counts down without a new fetch
   const [, setTick] = useState(0)
@@ -241,10 +268,10 @@ function useNextBus(stop: SavedDestination): {
     return () => clearInterval(id)
   }, [])
 
-  if (!departures) return null
+  if (!departures) return { next: null, upcoming: [] }
 
   const now = Date.now()
-  const next = departures
+  const sorted = departures
     .filter((d) => matchesDirection(d.destination, stop.direction))
     .filter((d) => !routesFilter || (d.serviceId && routesFilter.has(d.serviceId)))
     .filter((d) => {
@@ -255,14 +282,22 @@ function useNextBus(stop: SavedDestination): {
       const at = new Date(a.expectedDeparture || a.scheduledDeparture).getTime()
       const bt = new Date(b.expectedDeparture || b.scheduledDeparture).getTime()
       return at - bt
-    })[0]
+    })
 
-  if (!next) return null
+  const first = sorted[0]
+  if (!first) return { next: null, upcoming: [] }
 
   return {
-    minsAway: minutesUntil(next.expectedDeparture || next.scheduledDeparture),
-    variant: variantFor(next),
-    short: shortStatus(next),
+    next: {
+      serviceId: first.serviceId ?? null,
+      minsAway: minutesUntil(first.expectedDeparture || first.scheduledDeparture),
+      variant: variantFor(first),
+      short: shortStatus(first),
+    },
+    upcoming: sorted.slice(1, 3).map((d) => ({
+      serviceId: d.serviceId ?? null,
+      minsAway: minutesUntil(d.expectedDeparture || d.scheduledDeparture),
+    })),
   }
 }
 
