@@ -283,8 +283,7 @@ function TimePicker({
   const isFuture = value.kind === 'at'
   const today = todayISODate()
 
-  // Pending day/time state. When mode is "now" we show today + the current
-  // clock, so spinning the wheel seamlessly transitions into a future query.
+  // Pending day/time — initialised from value or "today + next 5 min mark".
   const initial = (() => {
     if (value.kind === 'at') {
       const [hh = '09', mm = '00'] = value.time.split(':')
@@ -298,6 +297,8 @@ function TimePicker({
   const [pendingDay, setPendingDay] = useState(initial.date)
   const [hour, setHour] = useState(initial.hour)
   const [minute, setMinute] = useState(initial.minute)
+  // Time panel is hidden by default so the common "now" flow is a single tap.
+  const [timeOpen, setTimeOpen] = useState(value.kind === 'at')
 
   useEffect(() => {
     if (value.kind === 'at') {
@@ -309,11 +310,19 @@ function TimePicker({
   }, [value])
 
   const days = nextNDays(7)
+  // "Today" is selected whenever we're in now-mode OR in at-mode on today.
   const selectedDay = isFuture ? pendingDay : today
 
   function pickDay(iso: string) {
     setPendingDay(iso)
-    onChange({ kind: 'at', date: iso, time: `${pad(hour)}:${pad(minute)}` })
+    if (iso === today) {
+      // Today = live/now. Tapping it always snaps back to live and hides
+      // the time wheel so the UI stays minimal.
+      onChange({ kind: 'now' })
+      setTimeOpen(false)
+    } else {
+      onChange({ kind: 'at', date: iso, time: `${pad(hour)}:${pad(minute)}` })
+    }
   }
 
   function apply() {
@@ -321,28 +330,15 @@ function TimePicker({
   }
 
   return (
-    <div className="mt-4 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-5">
+    <div className="mt-4 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-4">
       {/* Day row */}
       <div>
         <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
           Pick a day
         </p>
         <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => onChange({ kind: 'now' })}
-            aria-label="Show live departures"
-            className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
-              !isFuture
-                ? 'bg-primary text-on-primary border-primary shadow-md'
-                : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
-            }`}
-          >
-            <Icon name="bolt" filled size={18} />
-            <span className="text-xs font-bold uppercase tracking-wider">Now</span>
-          </button>
           {days.map((d) => {
-            const active = isFuture && selectedDay === d.iso
+            const active = selectedDay === d.iso
             return (
               <button
                 key={d.iso}
@@ -366,33 +362,52 @@ function TimePicker({
         </div>
       </div>
 
-      {/* Time wheel */}
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-          Pick a time
-        </p>
-        <div className="flex items-center justify-center gap-1 py-1">
-          <ScrollPicker items={HOURS} selectedIndex={hour} onChange={setHour} />
-          <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
-          <ScrollPicker
-            items={MINUTES_5}
-            selectedIndex={Math.round(minute / 5)}
-            onChange={(i) => setMinute(i * 5)}
-          />
+      {/* Time — tucked behind a link so the default UI is just day chips */}
+      {!timeOpen ? (
+        <button
+          type="button"
+          onClick={() => setTimeOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-2 text-sm font-semibold text-primary hover:bg-primary/5 rounded-xl active:scale-[0.99] transition-all"
+        >
+          <Icon name="schedule" size={16} />
+          Pick a specific time
+        </button>
+      ) : (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+              Pick a time
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setTimeOpen(false)
+                // Collapsing the time wheel on today = back to live.
+                if (pendingDay === today) onChange({ kind: 'now' })
+              }}
+              className="text-[11px] font-semibold text-on-surface-variant hover:text-on-surface"
+            >
+              Hide
+            </button>
+          </div>
+          <div className="flex items-center justify-center gap-1 py-1">
+            <ScrollPicker items={HOURS} selectedIndex={hour} onChange={setHour} />
+            <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
+            <ScrollPicker
+              items={MINUTES_5}
+              selectedIndex={Math.round(minute / 5)}
+              onChange={(i) => setMinute(i * 5)}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={apply}
+            className="w-full py-3 rounded-full bg-primary text-on-primary font-headline font-bold text-sm shadow-md active:scale-95 transition-all"
+          >
+            Show times for {pad(hour)}:{pad(minute)}
+          </button>
         </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={apply}
-        className={`w-full py-3 rounded-full font-headline font-bold text-sm shadow-md active:scale-95 transition-all ${
-          isFuture
-            ? 'bg-primary text-on-primary'
-            : 'bg-surface-container text-on-surface hover:bg-surface-container-high'
-        }`}
-      >
-        {isFuture ? `Show times for ${pad(hour)}:${pad(minute)}` : 'Showing times now'}
-      </button>
+      )}
     </div>
   )
 }

@@ -192,7 +192,7 @@ function StopsSection({ stops }: { stops: SavedDestination[] }) {
           Live
         </Link>
       </div>
-      <div className="flex gap-3 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
+      <div className="flex flex-col gap-2">
         {stops.map((stop, i) => {
           const sub = stop.routes
             ? `Routes ${stop.routes.split(',').join(', ')}`
