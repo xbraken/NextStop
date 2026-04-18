@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
 import { SAVED_ICON_OPTIONS } from '@/lib/saved-icons'
-import type { SavedColor } from '@/lib/saved-colors'
+import { getSavedColor, type SavedColor } from '@/lib/saved-colors'
+import ColorPickerPopover from '@/components/saved/ColorPickerPopover'
 import type { SavedDestination } from '@/types/user'
 import type { Departure } from '@/types/translink'
 import { matchesDirection } from '@/lib/direction'
@@ -22,11 +23,33 @@ type Props = {
   color?: SavedColor
 }
 
-export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color }: Props) {
+export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color: colorProp }: Props) {
   const [icon, setIcon] = useState<string | null>(stop.icon)
+  const [colorKey, setColorKey] = useState<string | null>(stop.color)
   const [open, setOpen] = useState(false)
+  const [colorOpen, setColorOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const paletteBtnRef = useRef<HTMLButtonElement | null>(null)
   const { next: nextBus, upcoming } = useNextBus(stop)
+
+  // Prefer live local state (after user picks a colour) over the prop from SSR.
+  const color: SavedColor | undefined = colorKey === stop.color ? colorProp : getSavedColor(colorKey)
+
+  async function pickColor(next: string | null) {
+    const previous = colorKey
+    setColorKey(next)
+    setColorOpen(false)
+    try {
+      const res = await fetch(`/api/saved/${stop.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ color: next }),
+      })
+      if (!res.ok) throw new Error(String(res.status))
+    } catch {
+      setColorKey(previous)
+    }
+  }
 
   async function pick(next: string | null) {
     const previous = icon
@@ -53,67 +76,97 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
     : 'Live arrivals')
 
   return (
-    <div className="relative shrink-0 w-44">
+    <div className="relative shrink-0 w-64">
       <Link
         href={href}
         className="group block p-4 bg-surface-container-lowest rounded-xl shadow-[0_4px_16px_rgba(26,28,28,0.04)] hover:shadow-md hover:bg-surface-container-low transition-all"
       >
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center mb-3"
-          style={color ? { backgroundColor: color.bg } : undefined}
-        >
-          <span style={color ? { color: color.fg } : undefined} className={color ? '' : 'text-primary'}>
-            <Icon name={shown} size={18} filled />
-          </span>
+        <div className="flex items-center gap-3 mb-3">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+            style={color ? { backgroundColor: color.bg } : undefined}
+          >
+            <span style={color ? { color: color.fg } : undefined} className={color ? '' : 'text-primary'}>
+              <Icon name={shown} size={18} filled />
+            </span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-sm text-on-surface truncate">{stop.label}</p>
+            {(stop.direction || stop.routes) && (
+              <div className="flex items-center gap-1 mt-0.5 min-w-0">
+                {stop.direction && (
+                  <span className="shrink-0 inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide text-on-surface-variant">
+                    <Icon name={stop.direction === 'inbound' ? 'south' : 'north'} size={10} />
+                    {stop.direction}
+                  </span>
+                )}
+                {stop.direction && stop.routes && (
+                  <span className="shrink-0 text-[9px] text-on-surface-variant/60">·</span>
+                )}
+                {stop.routes && (
+                  <span className="truncate text-[9px] font-bold text-on-surface-variant">
+                    {stop.routes.split(',').map((r) => r.trim()).filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-        <p className="font-bold text-sm text-on-surface truncate pr-5">{stop.label}</p>
+
         {nextBus ? (
-          <>
-            <div className="mt-1 flex items-center gap-1.5 min-w-0">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${nextBus.variant.dot}`} />
-              {nextBus.serviceId && (
-                <span className="shrink-0 px-1.5 py-0.5 rounded bg-primary/10 text-primary text-[10px] font-extrabold leading-none">
-                  {nextBus.serviceId}
-                </span>
-              )}
-              <span className={`text-[11px] font-bold truncate ${nextBus.variant.className}`}>
-                {nextBus.minsAway <= 0 ? 'Now' : `${nextBus.minsAway} min`}
-              </span>
-            </div>
-            <p className="text-[10px] text-on-surface-variant truncate mt-0.5">
-              {nextBus.short}
-              {upcoming.length > 0 && (
-                <>
-                  {' · then '}
-                  {upcoming.map((u, i) => (
-                    <span key={i}>
-                      {i > 0 && ', '}
-                      {u.serviceId || '–'} ({u.minsAway}m)
-                    </span>
-                  ))}
-                </>
-              )}
-            </p>
-          </>
+          <div className="flex flex-col gap-1.5">
+            <DepartureRow
+              serviceId={nextBus.serviceId}
+              minsAway={nextBus.minsAway}
+              variant={nextBus.variant}
+              primary
+            />
+            {upcoming.map((u, i) => (
+              <DepartureRow
+                key={i}
+                serviceId={u.serviceId}
+                minsAway={u.minsAway}
+                variant={u.variant}
+              />
+            ))}
+            {upcoming.length === 0 && (
+              <p className="text-[10px] text-on-surface-variant mt-0.5">No other buses scheduled</p>
+            )}
+          </div>
         ) : (
-          <p className="text-[11px] text-on-surface-variant truncate mt-0.5">
+          <p className="text-[11px] text-on-surface-variant truncate">
             {fallbackSubtitle}
           </p>
         )}
       </Link>
 
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          setOpen(true)
-        }}
-        aria-label="Change icon"
-        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container/70 backdrop-blur-sm hover:bg-surface-container-high active:scale-90 transition-all opacity-70 hover:opacity-100"
-      >
-        <Icon name={saving ? 'hourglass_empty' : 'edit'} size={14} />
-      </button>
+      <div className="absolute top-14 right-2 flex gap-1">
+        <button
+          ref={paletteBtnRef}
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setColorOpen((o) => !o)
+          }}
+          aria-label="Change colour"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container/70 backdrop-blur-sm hover:bg-surface-container-high active:scale-90 transition-all opacity-70 hover:opacity-100"
+        >
+          <Icon name="palette" size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setOpen(true)
+          }}
+          aria-label="Change icon"
+          className="w-7 h-7 rounded-full flex items-center justify-center text-on-surface-variant bg-surface-container/70 backdrop-blur-sm hover:bg-surface-container-high active:scale-90 transition-all opacity-70 hover:opacity-100"
+        >
+          <Icon name={saving ? 'hourglass_empty' : 'edit'} size={14} />
+        </button>
+      </div>
 
       {open && (
         <IconPickerDialog
@@ -123,6 +176,48 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
           onClose={() => setOpen(false)}
         />
       )}
+
+      {colorOpen && (
+        <ColorPickerPopover
+          anchorRef={paletteBtnRef}
+          currentColor={colorKey}
+          onPick={pickColor}
+          onClose={() => setColorOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function DepartureRow({
+  serviceId,
+  minsAway,
+  variant,
+  primary = false,
+}: {
+  serviceId: string | null
+  minsAway: number
+  variant: ReturnType<typeof variantFor>
+  primary?: boolean
+}) {
+  const label = minsAway <= 0 ? 'Now' : `${minsAway} min`
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${variant.dot}`} />
+      <span
+        className={`shrink-0 rounded font-extrabold leading-none text-center inline-flex items-center justify-center ${
+          primary
+            ? 'min-w-[2.25rem] h-6 px-1.5 bg-primary/10 text-primary text-xs'
+            : 'min-w-[2rem] h-5 px-1 bg-surface-container text-on-surface-variant text-[10px]'
+        }`}
+      >
+        {serviceId || '–'}
+      </span>
+      <span
+        className={`truncate font-bold ${primary ? 'text-sm text-emerald-600' : `text-[11px] ${variant.className}`}`}
+      >
+        {label}
+      </span>
     </div>
   )
 }
@@ -226,12 +321,15 @@ type NextBus = {
   serviceId: string | null
   minsAway: number
   variant: ReturnType<typeof variantFor>
-  short: string
 }
 
 function useNextBus(stop: SavedDestination): {
   next: NextBus | null
-  upcoming: Array<{ serviceId: string | null; minsAway: number }>
+  upcoming: Array<{
+    serviceId: string | null
+    minsAway: number
+    variant: ReturnType<typeof variantFor>
+  }>
 } {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   // tick forces re-render so minutes-away counts down without a new fetch
@@ -292,24 +390,12 @@ function useNextBus(stop: SavedDestination): {
       serviceId: first.serviceId ?? null,
       minsAway: minutesUntil(first.expectedDeparture || first.scheduledDeparture),
       variant: variantFor(first),
-      short: shortStatus(first),
     },
-    upcoming: sorted.slice(1, 3).map((d) => ({
+    upcoming: sorted.slice(1, 4).map((d) => ({
       serviceId: d.serviceId ?? null,
       minsAway: minutesUntil(d.expectedDeparture || d.scheduledDeparture),
+      variant: variantFor(d),
     })),
   }
 }
 
-// Condenses variantFor's label ("Live · 2 min late") into the tightest thing
-// that still communicates status, since a 176px card can't fit the long form.
-function shortStatus(d: Departure): string {
-  if (d.status === 'Cancelled') return 'cancelled'
-  if (!d.isLive) return 'scheduled'
-  const drift = Math.round(
-    (new Date(d.expectedDeparture).getTime() - new Date(d.scheduledDeparture).getTime()) / 60_000
-  )
-  if (drift >= 2) return `${drift} min late`
-  if (drift <= -1) return `${Math.abs(drift)} min early`
-  return 'on time'
-}
