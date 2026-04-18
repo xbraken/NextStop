@@ -67,9 +67,14 @@ async function JourneyResults({ searchParams }: PageProps) {
   const sp = await searchParams
   const from = sp.from ?? 'current'
   const to = sp.to ?? ''
-  const date = sp.date ?? new Date().toISOString().split('T')[0]
-  const time = sp.time ?? '09:00'
   const mode: 'leave_now' | 'leave_at' = sp.mode === 'leave_at' ? 'leave_at' : 'leave_now'
+  // Saved routes link here without a time — treat a missing time as "leave now"
+  // rather than a hardcoded 09:00 (which looks broken after 9am).
+  const now = new Date()
+  const defaultDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const defaultTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+  const date = sp.date ?? defaultDate
+  const time = sp.time ?? defaultTime
 
   const fromOutsideNI = isCoordOutsideNI(from)
   const toOutsideNI = isCoordOutsideNI(to)
@@ -201,7 +206,7 @@ export default async function JourneyPage(props: PageProps) {
             <div className="flex items-center gap-2 text-on-surface-variant font-medium">
               <Icon name="schedule" size={14} />
               <span className="font-label tracking-wide uppercase text-xs">
-                Departing {sp.time ?? '09:00'}
+                {sp.mode === 'leave_at' && sp.time ? `Departing ${sp.time}` : 'Leaving now'}
               </span>
             </div>
             <SaveRouteButton
