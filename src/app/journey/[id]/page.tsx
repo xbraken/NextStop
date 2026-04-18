@@ -6,6 +6,7 @@ import type { RankedItinerary, JourneyLeg } from '@/types/translink'
 import { planJourney, rankItineraries } from '@/lib/translink'
 import { formatTime, minutesUntil } from '@/lib/time'
 import { itineraryStatus, legStatus } from '@/lib/journey-status'
+import LegStops from './LegStops'
 
 // Maplibre is ~250KB. Loading it lazily lets the timeline text appear first
 // and the map fades in once its chunk arrives.
@@ -100,8 +101,32 @@ function LegRow({ leg }: { leg: JourneyLeg }) {
             </span>
           </div>
         </div>
+        <div className="mt-3 flex items-start gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
+          <Icon name="logout" size={14} className="text-primary mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-primary/80">
+              Get off at
+            </p>
+            <p className="text-sm font-headline font-extrabold text-on-surface truncate">
+              {leg.to.name}
+            </p>
+          </div>
+          <span className="ml-auto shrink-0 text-[11px] font-semibold tabular-nums text-on-surface-variant">
+            {formatTime(leg.endTime)}
+          </span>
+        </div>
         {leg.headsign && (
           <p className="text-xs text-on-surface-variant mt-2">Direction: {leg.headsign}</p>
+        )}
+        {leg.intermediateStops && leg.intermediateStops.length > 0 && (
+          <div className="mt-3">
+            <LegStops
+              boardName={leg.from.name}
+              alightName={leg.to.name}
+              alightTime={leg.endTime}
+              stops={leg.intermediateStops}
+            />
+          </div>
         )}
       </div>
     </div>

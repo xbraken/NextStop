@@ -48,7 +48,10 @@ async function loadHomeData(): Promise<{
   ])
   const raw = (prefs.rows[0]?.home_layout as string | null | undefined) ?? null
   const layout = parseHomeLayout(raw) ?? DEFAULT_HOME_LAYOUT
-  const rows = saved.rows as unknown as SavedDestination[]
+  // libsql returns Row objects with a non-plain prototype, which Next's
+  // server→client boundary rejects. Spread into plain objects before handing
+  // them to client components.
+  const rows = saved.rows.map((r) => ({ ...r })) as unknown as SavedDestination[]
   return {
     layout,
     groups: {

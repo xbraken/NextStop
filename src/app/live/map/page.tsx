@@ -12,6 +12,8 @@ import type { StopDirection } from '@/types/user'
 import { isInbound, matchesDirection } from '@/lib/direction'
 import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
+import { routeSort } from '@/lib/routes'
+import RouteFilter from '@/components/live/RouteFilter'
 
 const POLL_MS = 15_000
 const STOP_POLL_MS = 20_000
@@ -642,10 +644,16 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
   const [departures, setDepartures] = useState<Departure[] | null>(null)
   const [error, setError] = useState(false)
   const [direction, setDirection] = useState<StopDirection | null>(null)
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
+  const [knownRoutes, setKnownRoutes] = useState<string[]>([])
   const [, setTick] = useState(0)
 
-  // Reset the filter when a different stop is opened
-  useEffect(() => { setDirection(null) }, [stop.stopId])
+  // Reset the filters when a different stop is opened
+  useEffect(() => {
+    setDirection(null)
+    setSelectedRoutes([])
+    setKnownRoutes([])
+  }, [stop.stopId])
 
   // Re-render every 15s so "min" countdowns visibly tick down between API polls.
   useEffect(() => {
@@ -664,8 +672,15 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
         if (!res.ok) throw new Error(String(res.status))
         const data = await res.json()
         if (cancelled) return
-        setDepartures(data.departures ?? [])
+        const list: Departure[] = data.departures ?? []
+        setDepartures(list)
         setError(false)
+        // Accumulate route IDs seen so the chip row remains stable between polls.
+        setKnownRoutes((prev) => {
+          const set = new Set(prev)
+          for (const d of list) if (d.serviceId) set.add(d.serviceId)
+          return Array.from(set).sort(routeSort)
+        })
       } catch {
         if (!cancelled) setError(true)
       }
@@ -679,7 +694,10 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
     }
   }, [stop.stopId])
 
-  const filtered = (departures ?? []).filter((d) => matchesDirection(d.destination, direction))
+  const routesSet = selectedRoutes.length > 0 ? new Set(selectedRoutes) : null
+  const filtered = (departures ?? [])
+    .filter((d) => matchesDirection(d.destination, direction))
+    .filter((d) => !routesSet || (d.serviceId && routesSet.has(d.serviceId)))
   const upcoming = filtered.slice(0, 6)
 
   return (
@@ -705,8 +723,15 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
 
       <div className="mt-4 flex items-center gap-2 flex-wrap">
         <MiniDirectionToggle value={direction} onChange={setDirection} />
-        <StopSheetSaveButton stop={stop} direction={direction} />
+        <StopSheetSaveButton stop={stop} direction={direction} routes={selectedRoutes} />
       </div>
+
+      <RouteFilter
+        known={knownRoutes}
+        selected={selectedRoutes}
+        onChange={setSelectedRoutes}
+        edgeBleed={false}
+      />
 
       <div className="mt-4">
         {departures === null && !error && (
@@ -846,14 +871,18 @@ type SaveState = 'idle' | 'saving' | 'saved' | 'duplicate' | 'error' | 'unauth'
 function StopSheetSaveButton({
   stop,
   direction,
+  routes,
 }: {
   stop: TranslinkStop
   direction: StopDirection | null
+  routes: string[]
 }) {
   const [state, setState] = useState<SaveState>('idle')
+  const routesKey = routes.join(',')
 
-  // Reset whenever the stop or direction changes so the user can save again
-  useEffect(() => { setState('idle') }, [stop.stopId, direction])
+  // Reset whenever the stop / direction / routes filter changes so the user
+  // can save the new combo as a separate preset.
+  useEffect(() => { setState('idle') }, [stop.stopId, direction, routesKey])
 
   async function save() {
     setState('saving')
@@ -869,6 +898,7 @@ function StopSheetSaveButton({
           lat: stop.lat,
           lng: stop.lon,
           direction,
+          routes,
         }),
       })
       if (res.status === 401) { setState('unauth'); return }

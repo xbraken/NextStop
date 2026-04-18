@@ -8,6 +8,7 @@ import type { RankedItinerary, JourneyLeg } from '@/types/translink'
 import type { LiveVehicle } from '@/app/api/translink/vehicles/route'
 import { haversineMeters, formatMetres } from '@/lib/geo'
 import { formatTime, minutesUntil } from '@/lib/time'
+import StopProgress from './StopProgress'
 
 // Maplibre is heavy; lazy-load so the current-step card paints first.
 const GoMap = dynamic(() => import('./GoMap'), {
@@ -397,6 +398,10 @@ function CurrentStep({
           />
         )}
       </div>
+
+      {atStop && (leg.intermediateStops?.length ?? 0) > 0 && (
+        <StopProgress leg={leg} bus={activeBus} />
+      )}
     </section>
   )
 }

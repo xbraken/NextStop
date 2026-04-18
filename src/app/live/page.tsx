@@ -7,9 +7,11 @@ import Icon from '@/components/ui/Icon'
 import ScrollPicker from '@/components/ui/ScrollPicker'
 import type { TranslinkStop, Departure } from '@/types/translink'
 import type { StopDirection } from '@/types/user'
-import { matchesDirection, parseDirection } from '@/lib/direction'
+import { matchesDirection, parseDirection, isInbound } from '@/lib/direction'
 import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
+import { parseRoutes, routeSort } from '@/lib/routes'
+import RouteFilter from '@/components/live/RouteFilter'
 
 const POLL_MS = 15_000
 const POLL_MS_FUTURE = 60_000
@@ -27,22 +29,6 @@ function pad(n: number) {
 function todayISODate() {
   const d = new Date()
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-function tomorrowISODate() {
-  const d = new Date()
-  d.setDate(d.getDate() + 1)
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-function formatTimeMode(mode: TimeMode) {
-  if (mode.kind === 'now') return 'Now'
-  const label = mode.date === todayISODate()
-    ? 'Today'
-    : mode.date === tomorrowISODate()
-      ? 'Tomorrow'
-      : new Date(mode.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
-  return `${label} · ${mode.time}`
 }
 
 // Build the next N days starting from today — used by the day-chip row.
@@ -67,25 +53,6 @@ function nextNDays(n: number) {
 const HOURS = Array.from({ length: 24 }, (_, i) => pad(i))
 const MINUTES_5 = Array.from({ length: 12 }, (_, i) => pad(i * 5))
 
-function parseRoutes(raw: string | null | undefined): string[] {
-  if (!raw) return []
-  return Array.from(
-    new Set(
-      raw
-        .split(',')
-        .map((r) => r.trim())
-        .filter((r) => r.length > 0)
-    )
-  )
-}
-
-function routeSort(a: string, b: string) {
-  // Sort numerically when both start with a number (so 3, 3a, 10, 10a order naturally)
-  const na = parseInt(a, 10)
-  const nb = parseInt(b, 10)
-  if (!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb
-  return a.localeCompare(b)
-}
 
 export default function LivePage() {
   return (
@@ -193,107 +160,6 @@ function LivePageInner() {
         )}
       </main>
     </>
-  )
-}
-
-function RouteFilter({
-  known,
-  selected,
-  onChange,
-}: {
-  known: string[]
-  selected: string[]
-  onChange: (ids: string[]) => void
-}) {
-  // Show any currently-selected id even if it isn't in `known` yet (eg. a
-  // saved preference for a route not in today's feed) so the user can see
-  // and un-toggle it.
-  const ids = Array.from(new Set([...known, ...selected])).sort(routeSort)
-  const allActive = selected.length === 0
-  const selectedSet = new Set(selected)
-  const [adding, setAdding] = useState(false)
-  const [draft, setDraft] = useState('')
-
-  function toggle(id: string) {
-    const next = new Set(selectedSet)
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    onChange(Array.from(next))
-  }
-
-  function commitDraft() {
-    const id = draft.trim()
-    setDraft('')
-    setAdding(false)
-    if (!id) return
-    const next = new Set(selectedSet)
-    next.add(id)
-    onChange(Array.from(next))
-  }
-
-  return (
-    <div className="mt-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-        Filter by route
-      </p>
-      <div className="flex gap-2 overflow-x-auto -mx-6 px-6 pb-1 scrollbar-none">
-        <button
-          type="button"
-          onClick={() => onChange([])}
-          className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
-            allActive
-              ? 'bg-primary text-on-primary shadow-sm'
-              : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
-          }`}
-        >
-          All
-        </button>
-        {ids.map((id) => {
-          const active = selectedSet.has(id)
-          return (
-            <button
-              key={id}
-              type="button"
-              onClick={() => toggle(id)}
-              className={`flex-shrink-0 px-4 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
-                active
-                  ? 'bg-primary text-on-primary shadow-sm'
-                  : 'bg-surface-container-low text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              {id}
-            </button>
-          )
-        })}
-        {adding ? (
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitDraft}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitDraft()
-              else if (e.key === 'Escape') {
-                setDraft('')
-                setAdding(false)
-              }
-            }}
-            placeholder="e.g. 3d"
-            className="flex-shrink-0 w-24 px-4 py-1.5 rounded-full text-xs font-bold bg-surface-container-low text-on-surface outline-none border border-primary/40 placeholder:text-outline"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold bg-surface-container-low text-on-surface-variant hover:text-on-surface active:scale-95 transition-all"
-            aria-label="Add a route not in the list"
-          >
-            <Icon name="add" size={14} />
-            Add
-          </button>
-        )}
-      </div>
-    </div>
   )
 }
 
@@ -414,21 +280,20 @@ function TimePicker({
   value: TimeMode
   onChange: (m: TimeMode) => void
 }) {
-  const [open, setOpen] = useState(false)
   const isFuture = value.kind === 'at'
+  const today = todayISODate()
 
-  // The day + time the user has dialled in but not yet committed.
-  // Starts from current selection, or today + a sensible default time.
+  // Pending day/time state. When mode is "now" we show today + the current
+  // clock, so spinning the wheel seamlessly transitions into a future query.
   const initial = (() => {
     if (value.kind === 'at') {
       const [hh = '09', mm = '00'] = value.time.split(':')
       return { date: value.date, hour: parseInt(hh, 10), minute: parseInt(mm, 10) }
     }
     const now = new Date()
-    // Round up to the next 5-min mark so the wheel doesn't open in the past.
     const m = (Math.floor(now.getMinutes() / 5) + 1) * 5
     const h = m >= 60 ? (now.getHours() + 1) % 24 : now.getHours()
-    return { date: todayISODate(), hour: h, minute: m % 60 }
+    return { date: today, hour: h, minute: m % 60 }
   })()
   const [pendingDay, setPendingDay] = useState(initial.date)
   const [hour, setHour] = useState(initial.hour)
@@ -444,134 +309,90 @@ function TimePicker({
   }, [value])
 
   const days = nextNDays(7)
+  const selectedDay = isFuture ? pendingDay : today
+
+  function pickDay(iso: string) {
+    setPendingDay(iso)
+    onChange({ kind: 'at', date: iso, time: `${pad(hour)}:${pad(minute)}` })
+  }
 
   function apply() {
     onChange({ kind: 'at', date: pendingDay, time: `${pad(hour)}:${pad(minute)}` })
-    setOpen(false)
-  }
-
-  function reset() {
-    onChange({ kind: 'now' })
-    setOpen(false)
   }
 
   return (
-    <div className="mt-4">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between gap-3 px-5 py-3 rounded-xl border transition-colors ${
-          isFuture
-            ? 'bg-primary/10 border-primary/30 text-primary'
-            : 'bg-surface-container-lowest border-outline-variant/30 text-on-surface'
-        }`}
-      >
-        <span className="flex items-center gap-2">
-          <Icon name={isFuture ? 'schedule' : 'bolt'} size={18} filled={isFuture} />
-          <span className="font-headline font-bold text-sm">{formatTimeMode(value)}</span>
-        </span>
-        <span className="flex items-center gap-2 text-xs font-semibold opacity-80">
-          {isFuture && (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => {
-                e.stopPropagation()
-                reset()
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  reset()
-                }
-              }}
-              className="px-2 py-1 rounded-full hover:bg-primary/15 active:scale-95 cursor-pointer"
-            >
-              Now
-            </span>
-          )}
-          <Icon name={open ? 'expand_less' : 'expand_more'} size={18} />
-        </span>
-      </button>
-
-      {open && (
-        <div className="mt-3 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-5">
-          {/* Day row */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-              1. Pick a day
-            </p>
-            <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
+    <div className="mt-4 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant/20 shadow-[0_8px_32px_rgba(26,28,28,0.06)] space-y-5">
+      {/* Day row */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+          Pick a day
+        </p>
+        <div className="flex gap-2 overflow-x-auto -mx-4 px-4 pb-1 scrollbar-none">
+          <button
+            type="button"
+            onClick={() => onChange({ kind: 'now' })}
+            aria-label="Show live departures"
+            className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
+              !isFuture
+                ? 'bg-primary text-on-primary border-primary shadow-md'
+                : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
+            }`}
+          >
+            <Icon name="bolt" filled size={18} />
+            <span className="text-xs font-bold uppercase tracking-wider">Now</span>
+          </button>
+          {days.map((d) => {
+            const active = isFuture && selectedDay === d.iso
+            return (
               <button
+                key={d.iso}
                 type="button"
-                onClick={reset}
+                onClick={() => pickDay(d.iso)}
                 className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
-                  !isFuture
+                  active
                     ? 'bg-primary text-on-primary border-primary shadow-md'
                     : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
                 }`}
               >
-                <Icon name="bolt" filled size={18} />
-                <span className="text-xs font-bold">Now</span>
+                <span className="text-xs font-bold uppercase tracking-wider">{d.label}</span>
+                <span className={`text-lg font-headline font-extrabold leading-none ${
+                  active ? '' : 'text-on-surface-variant'
+                }`}>
+                  {d.day}
+                </span>
               </button>
-              {days.map((d) => {
-                const active = pendingDay === d.iso && isFuture
-                const selected = pendingDay === d.iso
-                return (
-                  <button
-                    key={d.iso}
-                    type="button"
-                    onClick={() => setPendingDay(d.iso)}
-                    className={`flex-shrink-0 flex flex-col items-center justify-center gap-0.5 min-w-[68px] py-2 px-3 rounded-2xl border-2 transition-all active:scale-95 ${
-                      active
-                        ? 'bg-primary text-on-primary border-primary shadow-md'
-                        : selected
-                          ? 'bg-primary/10 border-primary/40 text-primary'
-                          : 'bg-surface-container border-transparent text-on-surface hover:bg-surface-container-high'
-                    }`}
-                  >
-                    <span className="text-xs font-bold uppercase tracking-wider">{d.label}</span>
-                    <span className={`text-lg font-headline font-extrabold leading-none ${
-                      active ? '' : 'text-on-surface-variant'
-                    }`}>
-                      {d.day}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Time wheel */}
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-              2. Spin to a time
-            </p>
-            <div className="flex items-center justify-center gap-1 py-1">
-              <ScrollPicker
-                items={HOURS}
-                selectedIndex={hour}
-                onChange={setHour}
-              />
-              <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
-              <ScrollPicker
-                items={MINUTES_5}
-                selectedIndex={Math.round(minute / 5)}
-                onChange={(i) => setMinute(i * 5)}
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={apply}
-            className="w-full py-3 rounded-full bg-primary text-on-primary font-headline font-bold text-sm shadow-md active:scale-95 transition-all"
-          >
-            Show times for {pad(hour)}:{pad(minute)}
-          </button>
+            )
+          })}
         </div>
-      )}
+      </div>
+
+      {/* Time wheel */}
+      <div>
+        <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+          Pick a time
+        </p>
+        <div className="flex items-center justify-center gap-1 py-1">
+          <ScrollPicker items={HOURS} selectedIndex={hour} onChange={setHour} />
+          <span className="text-3xl font-headline font-extrabold text-outline-variant pb-0.5">:</span>
+          <ScrollPicker
+            items={MINUTES_5}
+            selectedIndex={Math.round(minute / 5)}
+            onChange={(i) => setMinute(i * 5)}
+          />
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={apply}
+        className={`w-full py-3 rounded-full font-headline font-bold text-sm shadow-md active:scale-95 transition-all ${
+          isFuture
+            ? 'bg-primary text-on-primary'
+            : 'bg-surface-container text-on-surface hover:bg-surface-container-high'
+        }`}
+      >
+        {isFuture ? `Show times for ${pad(hour)}:${pad(minute)}` : 'Showing times now'}
+      </button>
     </div>
   )
 }
@@ -811,7 +632,7 @@ function DepartureBoard({
         <div className="flex flex-col gap-3">
           {tagged.map(({ d, key, leaving }) => (
             <div key={key} className={leaving ? 'animate-pop-out' : ''}>
-              <DepartureCard d={d} showAbsolute={isFuture} />
+              <DepartureCard d={d} showAbsolute={isFuture} showDirection={!direction} />
             </div>
           ))}
         </div>
@@ -845,12 +666,21 @@ function UpdatedIndicator({ updatedAt, error }: { updatedAt: number; error: bool
   )
 }
 
-function DepartureCard({ d, showAbsolute = false }: { d: Departure; showAbsolute?: boolean }) {
+function DepartureCard({
+  d,
+  showAbsolute = false,
+  showDirection = false,
+}: {
+  d: Departure
+  showAbsolute?: boolean
+  showDirection?: boolean
+}) {
   const variant = variantFor(d)
   const iso = d.expectedDeparture || d.scheduledDeparture
   const minsAway = minutesUntil(iso)
   const absoluteTime = formatTime(iso)
   const trackable = !!d.serviceId
+  const inbound = isInbound(d.destination)
   const mapHref = `/live/map?line=${encodeURIComponent(d.serviceId)}&dest=${encodeURIComponent(d.destination)}`
 
   const content = (
@@ -862,7 +692,18 @@ function DepartureCard({ d, showAbsolute = false }: { d: Departure; showAbsolute
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="font-headline font-bold truncate">{d.destination || 'Unknown destination'}</p>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {showDirection && (
+            <span
+              className={`shrink-0 inline-flex ${inbound ? 'text-primary' : 'text-on-surface-variant'}`}
+              aria-label={inbound ? 'inbound' : 'outbound'}
+              title={inbound ? 'Inbound' : 'Outbound'}
+            >
+              <Icon name={inbound ? 'south_west' : 'north_east'} size={14} />
+            </span>
+          )}
+          <p className="font-headline font-bold truncate">{d.destination || 'Unknown destination'}</p>
+        </div>
         <div className={`mt-1 inline-flex items-center gap-1.5 text-xs font-semibold ${variant.className}`}>
           <span className={`w-2 h-2 rounded-full ${variant.dot}`} />
           {variant.label}

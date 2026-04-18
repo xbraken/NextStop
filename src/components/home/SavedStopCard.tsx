@@ -9,7 +9,7 @@ import { getSavedColor, type SavedColor } from '@/lib/saved-colors'
 import ColorPickerPopover from '@/components/saved/ColorPickerPopover'
 import type { SavedDestination } from '@/types/user'
 import type { Departure } from '@/types/translink'
-import { matchesDirection } from '@/lib/direction'
+import { matchesDirection, isInbound } from '@/lib/direction'
 import { variantFor } from '@/lib/departure'
 import { minutesUntil } from '@/lib/time'
 
@@ -119,6 +119,8 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
               serviceId={nextBus.serviceId}
               minsAway={nextBus.minsAway}
               variant={nextBus.variant}
+              inbound={nextBus.inbound}
+              showDirection={!stop.direction}
               primary
             />
             {upcoming.map((u, i) => (
@@ -127,6 +129,8 @@ export default function SavedStopCard({ stop, href, defaultIcon, subtitle, color
                 serviceId={u.serviceId}
                 minsAway={u.minsAway}
                 variant={u.variant}
+                inbound={u.inbound}
+                showDirection={!stop.direction}
               />
             ))}
             {upcoming.length === 0 && (
@@ -193,17 +197,30 @@ function DepartureRow({
   serviceId,
   minsAway,
   variant,
+  inbound,
+  showDirection = false,
   primary = false,
 }: {
   serviceId: string | null
   minsAway: number
   variant: ReturnType<typeof variantFor>
+  inbound: boolean
+  showDirection?: boolean
   primary?: boolean
 }) {
   const label = minsAway <= 0 ? 'Now' : `${minsAway} min`
   return (
     <div className="flex items-center gap-2 min-w-0">
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${variant.dot}`} />
+      {showDirection && (
+        <span
+          className={`shrink-0 inline-flex ${inbound ? 'text-primary' : 'text-on-surface-variant'}`}
+          aria-label={inbound ? 'inbound' : 'outbound'}
+          title={inbound ? 'Inbound' : 'Outbound'}
+        >
+          <Icon name={inbound ? 'south_west' : 'north_east'} size={12} />
+        </span>
+      )}
       <span
         className={`shrink-0 rounded font-extrabold leading-none text-center inline-flex items-center justify-center ${
           primary
@@ -321,6 +338,7 @@ type NextBus = {
   serviceId: string | null
   minsAway: number
   variant: ReturnType<typeof variantFor>
+  inbound: boolean
 }
 
 function useNextBus(stop: SavedDestination): {
@@ -329,6 +347,7 @@ function useNextBus(stop: SavedDestination): {
     serviceId: string | null
     minsAway: number
     variant: ReturnType<typeof variantFor>
+    inbound: boolean
   }>
 } {
   const [departures, setDepartures] = useState<Departure[] | null>(null)
@@ -390,11 +409,13 @@ function useNextBus(stop: SavedDestination): {
       serviceId: first.serviceId ?? null,
       minsAway: minutesUntil(first.expectedDeparture || first.scheduledDeparture),
       variant: variantFor(first),
+      inbound: isInbound(first.destination),
     },
     upcoming: sorted.slice(1, 4).map((d) => ({
       serviceId: d.serviceId ?? null,
       minsAway: minutesUntil(d.expectedDeparture || d.scheduledDeparture),
       variant: variantFor(d),
+      inbound: isInbound(d.destination),
     })),
   }
 }
