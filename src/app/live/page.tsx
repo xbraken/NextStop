@@ -12,6 +12,7 @@ import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
 import { parseRoutes } from '@/lib/routes'
 import RouteFilter from '@/components/live/RouteFilter'
+import NearbyStops from '@/components/live/NearbyStops'
 
 const POLL_MS = 15_000
 const POLL_MS_FUTURE = 60_000
@@ -110,8 +111,23 @@ function LivePageInner() {
     <>
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-2 min-w-0">
-          <Icon name="sensors" size={22} className="text-primary" filled />
-          <h1 className="font-headline font-bold text-xl text-primary truncate">Live</h1>
+          {stop && (
+            <button
+              type="button"
+              onClick={() => setStop(null)}
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all"
+              aria-label="Back to stops"
+            >
+              <Icon name="arrow_back" size={16} />
+              Back
+            </button>
+          )}
+          {!stop && (
+            <>
+              <Icon name="sensors" size={22} className="text-primary" filled />
+              <h1 className="font-headline font-bold text-xl text-primary truncate">Live</h1>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {stop && <SaveStopButton stop={stop} direction={direction} routes={selectedRoutes} />}
@@ -153,13 +169,7 @@ function LivePageInner() {
             />
           </>
         )}
-        {!stop && (
-          <div className="mt-10 text-center text-on-surface-variant">
-            <Icon name="pin_drop" size={48} className="mb-4 opacity-40" />
-            <p className="font-headline font-bold">Pick a stop</p>
-            <p className="text-sm mt-1">Search for a stop to see live arrivals</p>
-          </div>
-        )}
+        {!stop && <NearbyStops onSelect={setStop} />}
       </main>
     </>
   )
@@ -680,7 +690,7 @@ function DepartureBoard({
         <div className="flex flex-col gap-3">
           {tagged.map(({ d, key, leaving }) => (
             <div key={key} className={leaving ? 'animate-pop-out' : ''}>
-              <DepartureCard d={d} showAbsolute={isFuture} showDirection={!direction} />
+              <DepartureCard d={d} showAbsolute={isFuture} showDirection={!direction} originStopId={stop.stopId} />
             </div>
           ))}
         </div>
@@ -718,10 +728,12 @@ function DepartureCard({
   d,
   showAbsolute = false,
   showDirection = false,
+  originStopId,
 }: {
   d: Departure
   showAbsolute?: boolean
   showDirection?: boolean
+  originStopId?: string
 }) {
   const variant = variantFor(d)
   const iso = d.expectedDeparture || d.scheduledDeparture
@@ -729,7 +741,15 @@ function DepartureCard({
   const absoluteTime = formatTime(iso)
   const trackable = !!d.serviceId
   const inbound = isInbound(d.destination)
-  const mapHref = `/live/map?line=${encodeURIComponent(d.serviceId)}&dest=${encodeURIComponent(d.destination)}`
+  // Pass the bus's direction as a filter so the map tracks the right way of
+  // a bi-directional service (e.g. inbound vs outbound 3a). Using `isInbound`
+  // here keeps the source of truth in one place.
+  const dir = inbound ? 'inbound' : 'outbound'
+  const mapHref =
+    `/live/map?line=${encodeURIComponent(d.serviceId)}` +
+    `&dest=${encodeURIComponent(d.destination)}` +
+    `&dir=${dir}` +
+    (originStopId ? `&from=${encodeURIComponent(originStopId)}` : '')
 
   const content = (
     <>

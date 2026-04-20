@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import Link from 'next/link'
@@ -14,6 +14,7 @@ import { formatTime, minutesUntil } from '@/lib/time'
 import { variantFor } from '@/lib/departure'
 import { routeSort } from '@/lib/routes'
 import RouteFilter from '@/components/live/RouteFilter'
+import StopProgress from '@/components/live/StopProgress'
 
 const POLL_MS = 15_000
 const STOP_POLL_MS = 20_000
@@ -48,9 +49,12 @@ export default function LiveMapPage() {
 }
 
 function LiveMapInner() {
+  const router = useRouter()
   const params = useSearchParams()
   const lineFilter = params.get('line')?.toUpperCase() ?? null
   const destFilter = params.get('dest') ?? null
+  const dirFilter = (params.get('dir') as StopDirection | null) ?? null
+  const fromStopId = params.get('from')
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const [selected, setSelected] = useState<LiveVehicle | null>(null)
@@ -316,7 +320,7 @@ function LiveMapInner() {
         const data = (await res.json()) as { vehicles: LiveVehicle[] }
         if (cancelled) return
 
-        const matches = filterVehicles(data.vehicles, lineFilter, destFilter)
+        const matches = filterVehicles(data.vehicles, lineFilter, destFilter, dirFilter)
         const shown = lineFilter ? matches : data.vehicles
         vehiclesRef.current = new Map(shown.map((v) => [v.id, v]))
         setCount(shown.length)
@@ -354,35 +358,53 @@ function LiveMapInner() {
       cancelled = true
       clearInterval(id)
     }
-  }, [lineFilter, destFilter])
+  }, [lineFilter, destFilter, dirFilter])
 
   function filterVehicles(
     all: LiveVehicle[],
     line: string | null,
-    dest: string | null
+    dest: string | null,
+    dir: StopDirection | null,
   ): LiveVehicle[] {
     if (!line) return all
+    const onLine = all.filter((v) => v.line.toUpperCase() === line)
+    if (onLine.length === 0) return []
+
+    // Direction is the most reliable filter — vehicle destinations are
+    // reworded constantly ("Belfast, City Hall" vs "City Hall, Belfast") but
+    // inbound/outbound is derived from the same matcher the schedule uses.
+    if (dir) {
+      const byDir = onLine.filter((v) => matchesDirection(v.destination, dir))
+      if (byDir.length > 0) return byDir
+    }
+
+    // Fallback to the legacy substring match if no dir provided.
     const destLc = dest?.toLowerCase() ?? ''
-    const exact = all.filter(
-      (v) =>
-        v.line.toUpperCase() === line &&
-        (!destLc || v.destination.toLowerCase().includes(destLc))
-    )
-    if (exact.length > 0) return exact
-    // Fallback: line only, any direction
-    return all.filter((v) => v.line.toUpperCase() === line)
+    if (destLc) {
+      const byDest = onLine.filter((v) => v.destination.toLowerCase().includes(destLc))
+      if (byDest.length > 0) return byDest
+    }
+
+    // Nothing matched on the chosen direction — don't silently fall through
+    // to the opposite direction; return empty so the UI shows "no buses".
+    return dir ? [] : onLine
   }
 
   return (
     <>
       <header className="fixed top-0 w-full z-50 bg-surface/80 backdrop-blur-md h-16 flex items-center justify-between px-6">
         <div className="flex items-center gap-3">
-          <Link
-            href="/live"
-            className="p-2 -ml-2 rounded-full hover:bg-surface-container transition-colors active:scale-95 text-primary"
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) router.back()
+              else router.push('/live')
+            }}
+            className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-full bg-primary/10 text-primary hover:bg-primary/20 active:scale-95 transition-all"
           >
-            <Icon name="arrow_back" size={22} />
-          </Link>
+            <Icon name="arrow_back" size={16} />
+            Back
+          </button>
           <div className="flex items-center gap-2">
             <Icon name="directions_bus" size={22} className="text-primary" filled />
             <h1 className="font-headline font-bold text-xl text-primary">Live Map</h1>
@@ -449,6 +471,7 @@ function LiveMapInner() {
       {selected && !selectedStop && (
         <VehicleSheet
           v={selected}
+          fromStopId={fromStopId}
           following={followMode}
           onToggleFollow={() => {
             const next = !followMode
@@ -535,11 +558,13 @@ function applyStops(map: maplibregl.Map, stops: TranslinkStop[]) {
 
 function VehicleSheet({
   v,
+  fromStopId,
   following,
   onToggleFollow,
   onClose,
 }: {
   v: LiveVehicle
+  fromStopId: string | null
   following: boolean
   onToggleFollow: () => void
   onClose: () => void
@@ -549,7 +574,7 @@ function VehicleSheet({
   const late = delayMin >= 2
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-28 animate-in slide-in-from-bottom duration-200">
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-surface-container-lowest rounded-t-2xl shadow-[0_-8px_32px_rgba(26,28,28,0.12)] p-6 pb-28 max-h-[75vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
       <div className="flex items-start gap-4">
         <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
           <span className="font-headline font-extrabold text-primary text-lg">
@@ -610,6 +635,16 @@ function VehicleSheet({
           {following ? 'Following' : 'Follow'}
         </button>
       </div>
+
+      {v.line && (
+        <StopProgress
+          fromStopId={fromStopId}
+          line={v.line}
+          direction={isInbound(v.destination) ? 'inbound' : 'outbound'}
+          vehicleLat={v.lat}
+          vehicleLon={v.lon}
+        />
+      )}
     </div>
   )
 }
@@ -757,7 +792,7 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
         {upcoming.length > 0 && (
           <ul className="divide-y divide-outline-variant/30">
             {upcoming.map((d, i) => (
-              <StopDepartureRow key={`${d.serviceId}-${d.scheduledDeparture}-${i}`} d={d} />
+              <StopDepartureRow key={`${d.serviceId}-${d.scheduledDeparture}-${i}`} d={d} fromStopId={stop.stopId} />
             ))}
           </ul>
         )}
@@ -766,12 +801,17 @@ function StopSheet({ stop, onClose }: { stop: TranslinkStop; onClose: () => void
   )
 }
 
-function StopDepartureRow({ d }: { d: Departure }) {
+function StopDepartureRow({ d, fromStopId }: { d: Departure; fromStopId: string }) {
   const inbound = isInbound(d.destination)
   const mins = minutesUntil(d.expectedDeparture || d.scheduledDeparture)
   const isCancelled = d.status === 'Cancelled'
   const trackable = !!d.serviceId && !isCancelled
-  const href = `/live/map?line=${encodeURIComponent(d.serviceId)}&dest=${encodeURIComponent(d.destination)}`
+  const dir = inbound ? 'inbound' : 'outbound'
+  const href =
+    `/live/map?line=${encodeURIComponent(d.serviceId)}` +
+    `&dest=${encodeURIComponent(d.destination)}` +
+    `&dir=${dir}` +
+    `&from=${encodeURIComponent(fromStopId)}`
   const variant = variantFor(d)
 
   const content = (
