@@ -808,8 +808,7 @@ function StopDepartureRow({ d, fromStopId }: { d: Departure; fromStopId: string 
   const trackable = !!d.serviceId && !isCancelled
   const dir = inbound ? 'inbound' : 'outbound'
   const href =
-    `/live/map?line=${encodeURIComponent(d.serviceId)}` +
-    `&dest=${encodeURIComponent(d.destination)}` +
+    `/live/trip?line=${encodeURIComponent(d.serviceId)}` +
     `&dir=${dir}` +
     `&from=${encodeURIComponent(fromStopId)}`
   const variant = variantFor(d)

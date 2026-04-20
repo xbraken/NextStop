@@ -739,15 +739,13 @@ function DepartureCard({
   const iso = d.expectedDeparture || d.scheduledDeparture
   const minsAway = minutesUntil(iso)
   const absoluteTime = formatTime(iso)
-  const trackable = !!d.serviceId
+  const hasService = !!d.serviceId
   const inbound = isInbound(d.destination)
-  // Pass the bus's direction as a filter so the map tracks the right way of
-  // a bi-directional service (e.g. inbound vs outbound 3a). Using `isInbound`
-  // here keeps the source of truth in one place.
   const dir = inbound ? 'inbound' : 'outbound'
-  const mapHref =
-    `/live/map?line=${encodeURIComponent(d.serviceId)}` +
-    `&dest=${encodeURIComponent(d.destination)}` +
+  // Now links to the trip stop-list view first — tracking is a secondary
+  // action on that page, since many buses aren't realtime-tracked.
+  const tripHref =
+    `/live/trip?line=${encodeURIComponent(d.serviceId)}` +
     `&dir=${dir}` +
     (originStopId ? `&from=${encodeURIComponent(originStopId)}` : '')
 
@@ -809,10 +807,10 @@ function DepartureCard({
             )}
           </>
         )}
-        {trackable && (
+        {hasService && (
           <div className="mt-2 flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-            <Icon name="map" size={12} />
-            Track
+            <Icon name="arrow_forward" size={12} />
+            Stops
           </div>
         )}
       </div>
@@ -822,9 +820,9 @@ function DepartureCard({
   const baseClass =
     'bg-surface-container-lowest rounded-xl p-4 shadow-[0_8px_32px_rgba(26,28,28,0.04)] flex items-center gap-4'
 
-  if (trackable) {
+  if (hasService && originStopId) {
     return (
-      <Link href={mapHref} className={`${baseClass} hover:bg-surface-container-low active:scale-[0.99] transition-all`}>
+      <Link href={tripHref} className={`${baseClass} hover:bg-surface-container-low active:scale-[0.99] transition-all`}>
         {content}
       </Link>
     )
