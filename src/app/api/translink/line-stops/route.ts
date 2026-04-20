@@ -82,7 +82,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       line: match.name,
-      destination: match.destination.name,
+      destination: match.destination?.name ?? '',
       stops,
     })
   } catch (err) {
