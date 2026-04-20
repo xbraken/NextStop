@@ -37,6 +37,7 @@ function TripInner() {
   const [data, setData] = useState<TripResp | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [hasLive, setHasLive] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     if (!line || !fromStopId) {
@@ -144,12 +145,33 @@ function TripInner() {
           </div>
         )}
 
-        {data && (
+        {data && (() => {
+          const total = data.stops.length
+          const boardIdx = Math.max(0, data.stops.findIndex((s) => s.stopId === fromStopId))
+          // Collapsed: show boarding stop + final stop only. Expanding reveals
+          // the rest so riders can estimate arrival time at a quick glance.
+          const PREVIEW = 3
+          const previewEnd = Math.min(total - 2, boardIdx + PREVIEW)
+          const visible = expanded
+            ? data.stops.map((s, i) => ({ s, i }))
+            : [
+                ...data.stops
+                  .slice(boardIdx, previewEnd + 1)
+                  .map((s, k) => ({ s, i: boardIdx + k })),
+                ...(total - 1 > previewEnd
+                  ? [{ s: data.stops[total - 1], i: total - 1 }]
+                  : []),
+              ]
+          const hiddenBetween = expanded ? 0 : Math.max(0, total - 1 - previewEnd - 1)
+          return (
           <ol className="relative mt-6">
-            {data.stops.map((s, i) => {
+            {visible.map(({ s, i }, vi) => {
               const isFirst = i === 0
-              const isLast = i === data.stops.length - 1
+              const isLast = i === total - 1
               const boarding = s.stopId === fromStopId
+              // Drop the expander right before the final stop so the "in
+              // between" gap is visually clear.
+              const showInlineExpand = !expanded && hiddenBetween > 0 && vi === visible.length - 2
               return (
                 <li key={`${s.stopId}-${i}`} className="relative flex items-start gap-3 pb-4 last:pb-0">
                   {!isLast && (
@@ -196,11 +218,34 @@ function TripInner() {
                       </span>
                     )}
                   </div>
+                  {showInlineExpand && (
+                    <div className="pl-9 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(true)}
+                        className="text-[11px] font-semibold text-primary hover:underline"
+                      >
+                        Show {hiddenBetween} stop{hiddenBetween === 1 ? '' : 's'} in between
+                      </button>
+                    </div>
+                  )}
                 </li>
               )
             })}
+            {expanded && (
+              <li className="pl-9 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  className="text-[11px] font-semibold text-on-surface-variant hover:underline"
+                >
+                  Collapse
+                </button>
+              </li>
+            )}
           </ol>
-        )}
+          )
+        })()}
       </main>
     </>
   )
