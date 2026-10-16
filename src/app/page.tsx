@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
+import QuickThemeToggle from '@/components/theme/QuickThemeToggle'
 import LocationHeader from '@/components/home/LocationHeader'
 import SavedStopCard from '@/components/home/SavedStopCard'
 import { Suspense } from 'react'
@@ -351,12 +352,15 @@ export default function HomePage() {
         <h1 className="text-2xl font-headline font-black text-primary tracking-tighter">
           NextStop
         </h1>
-        <Link
-          href="/profile"
-          className="p-2 rounded-full hover:bg-surface-container transition-colors active:scale-95"
-        >
-          <Icon name="account_circle" size={26} className="text-primary" />
-        </Link>
+        <div className="flex items-center gap-1">
+          <QuickThemeToggle />
+          <Link
+            href="/profile"
+            className="p-2 rounded-full hover:bg-surface-container transition-colors active:scale-95"
+          >
+            <Icon name="account_circle" size={26} className="text-primary" />
+          </Link>
+        </div>
       </header>
 
       <main className="pt-24 px-6 max-w-2xl mx-auto space-y-10 pb-32">
