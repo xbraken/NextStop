@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
+import { mapStyleUrl } from '@/lib/theme'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { JourneyLeg } from '@/types/translink'
 
@@ -47,7 +48,7 @@ export default function JourneyMap({ legs }: { legs: JourneyLeg[] }) {
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: mapStyleUrl(),
       center: allPoints[0],
       zoom: 12,
       attributionControl: false,

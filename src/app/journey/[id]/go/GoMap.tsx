@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
+import { mapStyleUrl } from '@/lib/theme'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { JourneyLeg } from '@/types/translink'
 import type { LiveVehicle } from '@/app/api/translink/vehicles/route'
@@ -48,7 +49,7 @@ export default function GoMap({
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: mapStyleUrl(),
       center: [start.from.lon || 0, start.from.lat || 0],
       zoom: 14,
       attributionControl: false,
@@ -234,7 +235,7 @@ export default function GoMap({
           if (!map || !userPos) return
           map.easeTo({ center: [userPos.lon, userPos.lat], zoom: 16, duration: 500 })
         }}
-        className="absolute bottom-3 right-3 w-10 h-10 rounded-full bg-white shadow-lg flex items-center justify-center text-primary active:scale-95 transition-all"
+        className="absolute bottom-3 right-3 w-10 h-10 rounded-full bg-surface-container-lowest shadow-lg flex items-center justify-center text-primary active:scale-95 transition-all"
         aria-label="Centre on me"
       >
         <span className="material-symbols-outlined" style={{ fontSize: 20, color: ACTIVE_COLOR }}>

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import TabBar from '@/components/layout/TabBar'
+import { THEME_INIT_SCRIPT } from '@/lib/theme'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -14,7 +15,10 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#006565',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#006565' },
+    { media: '(prefers-color-scheme: dark)', color: '#0f1212' },
+  ],
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -26,8 +30,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"

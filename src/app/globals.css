@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   /* M3 Color Tokens */
   --color-primary: #006565;
@@ -63,6 +65,58 @@
   --font-label: 'Inter', sans-serif;
 }
 
+/* ─── Dark theme ───────────────────────────────────────────────────
+   Applied when <html> has the `dark` class (set by the inline script in
+   layout.tsx from the saved preference, or the OS setting by default).
+   Cards use surface-container-lowest, so the container ramp gets lighter
+   (not darker) than the background to keep them looking raised. */
+:root.dark {
+  color-scheme: dark;
+
+  --color-primary: #76d6d5;
+  --color-primary-container: #3aa9a8;
+  --color-on-primary: #002020;
+  --color-on-primary-container: #001f1f;
+
+  --color-secondary: #89d0ed;
+  --color-secondary-container: #004d62;
+  --color-on-secondary: #003546;
+  --color-on-secondary-container: #baeaff;
+
+  --color-tertiary: #ffb692;
+  --color-tertiary-container: #733512;
+  --color-on-tertiary: #552000;
+  --color-on-tertiary-container: #ffdbcb;
+
+  --color-background: #0f1212;
+  --color-surface: #0f1212;
+  --color-surface-bright: #343838;
+  --color-surface-dim: #0f1212;
+  --color-on-background: #e2e3e3;
+  --color-on-surface: #e2e3e3;
+
+  --color-surface-variant: #3e4949;
+  --color-on-surface-variant: #bdc9c8;
+  --color-outline: #889392;
+  --color-outline-variant: #3e4949;
+
+  --color-surface-container-lowest: #1a1e1e;
+  --color-surface-container-low: #202424;
+  --color-surface-container: #252929;
+  --color-surface-container-high: #2c3030;
+  --color-surface-container-highest: #343838;
+
+  --color-inverse-surface: #e2e3e3;
+  --color-inverse-on-surface: #2f3131;
+  --color-inverse-primary: #006a6a;
+  --color-surface-tint: #76d6d5;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #93000a;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+}
+
 /* Material Symbols base style */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -78,8 +132,8 @@
 }
 
 body {
-  background-color: #f9f9f9;
-  color: #1a1c1c;
+  background-color: var(--color-background);
+  color: var(--color-on-surface);
   font-family: 'Inter', sans-serif;
   min-height: 100dvh;
 }

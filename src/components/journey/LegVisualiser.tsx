@@ -21,12 +21,11 @@ export default function LegVisualiser({ legs, compact = false }: LegVisualiserPr
               <span className="text-xs font-bold text-on-surface-variant">{formatMins(leg.duration)}</span>
             </div>
           ) : (
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-white shrink-0 ${leg.mode === 'RAIL' ? 'bg-secondary' : 'bg-primary'}`}>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md shrink-0 ${leg.mode === 'RAIL' ? 'bg-secondary text-on-secondary' : 'bg-primary text-on-primary'}`}>
               <Icon
                 name={leg.mode === 'RAIL' ? 'directions_railway' : 'directions_bus'}
                 filled
                 size={compact ? 14 : 16}
-                className="text-white"
               />
               <span className="text-xs font-bold">{leg.routeId ?? leg.mode}</span>
             </div>

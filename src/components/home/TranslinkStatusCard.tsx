@@ -21,17 +21,17 @@ export default async function TranslinkStatusCard() {
   const status = await getStatusSummary()
 
   const colours = {
-    ok: 'from-primary to-primary-container',
-    delay: 'from-[#b45309] to-[#d97706]',
-    disruption: 'from-error to-[#dc2626]',
+    ok: 'from-primary to-primary-container text-on-primary',
+    delay: 'from-[#b45309] to-[#d97706] text-white',
+    disruption: 'from-[#ba1a1a] to-[#dc2626] text-white',
   }
 
   return (
     <div
-      className={`p-6 rounded-xl bg-gradient-to-br ${colours[status.level as keyof typeof colours]} text-on-primary shadow-xl flex items-center gap-5`}
+      className={`p-6 rounded-xl bg-gradient-to-br ${colours[status.level as keyof typeof colours]} shadow-xl flex items-center gap-5`}
     >
       <div className="h-12 w-12 bg-white/20 rounded-full flex items-center justify-center shrink-0">
-        <Icon name="directions_bus" filled size={24} className="text-white" />
+        <Icon name="directions_bus" filled size={24} className="text-current" />
       </div>
       <div>
         <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-0.5">

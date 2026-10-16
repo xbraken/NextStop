@@ -571,7 +571,7 @@ function SearchPageInner() {
               <button
                 type="button"
                 onClick={handleSwap}
-                className="pointer-events-auto w-8 h-8 rounded-full bg-white border border-outline-variant/40 shadow-md flex items-center justify-center text-primary hover:bg-primary/10 active:scale-95 transition-all"
+                className="pointer-events-auto w-8 h-8 rounded-full bg-surface-container-lowest border border-outline-variant/40 shadow-md flex items-center justify-center text-primary hover:bg-primary/10 active:scale-95 transition-all"
                 aria-label="Swap origin and destination"
               >
                 <Icon name="swap_vert" size={18} />

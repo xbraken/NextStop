@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import maplibregl from 'maplibre-gl'
+import { mapStyleUrl } from '@/lib/theme'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import Link from 'next/link'
 import Icon from '@/components/ui/Icon'
@@ -81,7 +82,7 @@ function LiveMapInner() {
     if (!containerRef.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'https://tiles.openfreemap.org/styles/liberty',
+      style: mapStyleUrl(),
       center: BELFAST,
       zoom: 11,
     })

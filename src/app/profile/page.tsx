@@ -2,6 +2,7 @@ import { getSession } from '@/lib/auth'
 import Icon from '@/components/ui/Icon'
 import AuthForm from './AuthForm'
 import LogoutButton from './LogoutButton'
+import ThemeToggle from '@/components/theme/ThemeToggle'
 
 export const runtime = 'nodejs'
 
@@ -52,10 +53,14 @@ export default async function ProfilePage() {
                   <Icon name="chevron_right" size={20} className="text-outline" />
                 </a>
               ))}
+              <ThemeToggle />
             </div>
           </div>
         ) : (
-          <AuthForm />
+          <div className="space-y-6">
+            <AuthForm />
+            <ThemeToggle />
+          </div>
         )}
       </main>
     </>
